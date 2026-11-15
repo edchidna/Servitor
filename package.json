@@ -1,0 +1,16 @@
+{
+  "name": "spacemarineaar",
+  "version": "1.0.0",
+  "description": "Space Marine 2 After Action Report Discord Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "discord.js": "^14.28.1",
+    "dotenv": "^18.0.10",
+    "sharp": "^0.35.5"
+  }
+}
