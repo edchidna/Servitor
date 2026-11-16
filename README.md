@@ -1,8 +1,8 @@
-# Space Marine 2 AAR Bot
+# Space Marine 2 AAR Bot — Servitor
 
 A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge completions, Unproven Trials, Saga Points, member Honors, and Saga History profile cards.
 
-> **Documentation baseline:** This manual describes the implementation in the repository's `main` branch at commit `c39233cd4f59a6802f4d7b85644463236f000432`. It documents current code behavior, including known inconsistencies. It does not imply that planned behavior is already implemented.
+**Documentation scope:** This manual describes the Servitor production repository and its current implementation as reviewed on 16 November 2026. It documents the production configuration and implemented behavior, including relevant limitations. It does not imply that future planned features are already available.
 
 ## Contents
 
@@ -24,14 +24,14 @@ A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge
 - [Database and persistence](#database-and-persistence)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
-- [Known implementation gaps](#known-implementation-gaps)
+- [Known implementation notes](#known-implementation-notes)
 
 ## Features
 
 - Four regular AAR categories: Operations, Stratagems, Siege, and PVP.
 - Evidence uploads with generated image collages and archived original files in Discord threads.
 - Reaction-based AAR approval and rejection.
-- Separate Ordeal challenge submissions and review channel.
+- Separate Ordeal challenge submissions, review channel, and role rewards.
 - Unproven Trial submissions, progression tracking, and graduation role handling.
 - Ten configurable Honors with award/revocation history and display layouts.
 - Saga History profile cards generated with Sharp.
@@ -45,7 +45,7 @@ A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge
 - A Discord server where the bot can be invited.
 - Access to configure the bot's environment variables and Discord role/channel IDs.
 
-The repository does not currently declare a specific Node.js version in `package.json`. Check the installed dependencies if you encounter a runtime compatibility error.
+The repository does not currently declare a specific Node.js version in `package.json`. Check dependency compatibility if you encounter a runtime or installation error.
 
 ## Project files
 
@@ -61,6 +61,7 @@ The repository does not currently declare a specific Node.js version in `package
 | `deploy-commands.js` | Registers the bot's guild slash commands |
 | `test-operations-modal.js` | Focused checks for the Operations modal and related submission logic |
 | `assets/saga-background.png` | Background image used by the Saga History profile card |
+| `assets/fonts/` | Font assets used by the profile card |
 | `package.json` | Project metadata, scripts, and dependencies |
 | `package-lock.json` | Locked dependency versions |
 
@@ -68,10 +69,10 @@ The database is created locally as `aar-database.db`. SQLite may also create `aa
 
 ## Installation
 
-Open PowerShell in the project directory.
+Open PowerShell in the Servitor project directory.
 
 ```powershell
-cd C:\Users\<your-windows-user>\SpaceMarineAAR
+cd C:\Users\edchi\Servitor
 npm.cmd install
 ```
 
@@ -79,33 +80,42 @@ npm.cmd install
 
 Create a `.env` file in the project root and populate it using the configuration section below. Do not commit this file or share its secret values.
 
+The production repository has its own Git history and should be maintained independently from the development repository.
+
 ## Environment configuration
 
-The bot reads configuration from `.env`. The following variables are referenced by the current source.
+The bot reads configuration from `.env`.
 
 ### Required variables
 
 | Variable | Purpose |
 |---|---|
-| `DISCORD_TOKEN` | Bot token used to log in to Discord and authenticate command deployment |
+| `DISCORD_TOKEN` | Bot token used to log in to Discord |
 | `CLIENT_ID` | Discord application/client ID; used by `deploy-commands.js` |
 | `GUILD_ID` | Discord server ID where slash commands are registered |
 | `REPORT_CHANNEL_ID` | Channel where an administrator publishes the AAR submission panel |
 | `REVIEW_CHANNEL_ID` | Channel receiving Operations, Stratagems, Siege, and PVP reports for review |
 | `LEADERBOARD_CHANNEL_ID` | Channel where the persistent Saga Points leaderboard is posted or updated |
+| `MODERATOR_ROLE_ID` | AAR Moderator / High Command role used by review and Honor management permission checks |
 | `ORDEAL_REVIEW_CHANNEL_ID` | Dedicated channel for Ordeal completion reviews |
 | `NCO_REVIEW_CHANNEL_ID` | Channel receiving Trial/role discrepancy alerts and Ordeal review alerts |
+| `ADMIN_ROLE_ID` | Configured Admin role used by review and management permission checks |
+| `NCO_ROLE_ID` | NCO role used by AAR/Trial review checks and Trial Pack Member eligibility |
+| `IRON_WOLVES_ROLE_ID` | Role granted on Trial graduation and tracked for Saga History tenure |
 | `TRIAL_PANEL_CHANNEL_ID` | Channel where the Unproven Trial panel is published |
 | `TRIAL_REVIEW_CHANNEL_ID` | Dedicated channel for Unproven Trial submission reviews |
-| `ADMIN_ROLE_ID` | Configured Admin role used by review and management permission checks |
-| `MODERATOR_ROLE_ID` | AAR Moderator role used by review and Honor management permission checks |
-| `NCO_ROLE_ID` | NCO role used by AAR/Trial review checks and Trial Pack Member eligibility |
 | `UNPROVEN_ROLE_ID` | Role tracked for Trial eligibility and removed on graduation |
-| `IRON_WOLVES_ROLE_ID` | Role granted on Trial graduation and tracked for Saga History tenure |
+
+The main bot checks its required variables at startup. The command deployment script separately requires `DISCORD_TOKEN`, `CLIENT_ID`, and `GUILD_ID`.
+
+### Optional variables
+
+| Variable | Purpose |
+|---|---|
 | `LONE_WOLF_ROLE_ID` | Reward role granted for an approved Lone Wolf Ordeal |
 | `DOUBLE_TROUBLE_ROLE_ID` | Reward role granted for an approved Double Trouble Ordeal |
 
-The main bot checks its required variables at startup. The command deployment script separately requires `DISCORD_TOKEN`, `CLIENT_ID`, and `GUILD_ID`.
+An Ordeal challenge without its configured reward role is not available for selection.
 
 ### `.env` template
 
@@ -119,17 +129,20 @@ GUILD_ID=YOUR_DISCORD_SERVER_ID
 REPORT_CHANNEL_ID=YOUR_AAR_PANEL_CHANNEL_ID
 REVIEW_CHANNEL_ID=YOUR_AAR_REVIEW_CHANNEL_ID
 LEADERBOARD_CHANNEL_ID=YOUR_LEADERBOARD_CHANNEL_ID
+MODERATOR_ROLE_ID=YOUR_HIGH_COMMAND_ROLE_ID
+
 ORDEAL_REVIEW_CHANNEL_ID=YOUR_ORDEAL_REVIEW_CHANNEL_ID
 NCO_REVIEW_CHANNEL_ID=YOUR_NCO_ALERT_CHANNEL_ID
+
+ADMIN_ROLE_ID=YOUR_ADMIN_ROLE_ID
+NCO_ROLE_ID=YOUR_NCO_ROLE_ID
+IRON_WOLVES_ROLE_ID=YOUR_IRON_WOLVES_ROLE_ID
+UNPROVEN_ROLE_ID=YOUR_UNPROVEN_ROLE_ID
+
 TRIAL_PANEL_CHANNEL_ID=YOUR_TRIAL_PANEL_CHANNEL_ID
 TRIAL_REVIEW_CHANNEL_ID=YOUR_TRIAL_REVIEW_CHANNEL_ID
 
-ADMIN_ROLE_ID=YOUR_ADMIN_ROLE_ID
-MODERATOR_ROLE_ID=YOUR_AAR_MODERATOR_ROLE_ID
-NCO_ROLE_ID=YOUR_NCO_ROLE_ID
-UNPROVEN_ROLE_ID=YOUR_UNPROVEN_ROLE_ID
-IRON_WOLVES_ROLE_ID=YOUR_IRON_WOLVES_ROLE_ID
-
+# Optional Ordeal reward roles
 LONE_WOLF_ROLE_ID=YOUR_LONE_WOLF_REWARD_ROLE_ID
 DOUBLE_TROUBLE_ROLE_ID=YOUR_DOUBLE_TROUBLE_REWARD_ROLE_ID
 ```
@@ -178,6 +191,8 @@ npm.cmd run deploy
 
 The deployment script registers guild-specific slash commands for the server identified by `GUILD_ID`.
 
+**Important:** The deployment script replaces the registered guild command list for this application. Review the command definitions before deploying changes.
+
 Current commands:
 
 | Command | Description |
@@ -212,6 +227,8 @@ When the bot becomes ready, it:
 - Checks/publishes the Unproven Trial panel in `TRIAL_PANEL_CHANNEL_ID`.
 
 Keep the process running for the bot to remain online. For production use, run it on a reliable always-on host and arrange a safe restart strategy.
+
+The first startup initializes the local SQLite database and may create or update database records. Back up any existing database before replacing or changing production data.
 
 ## AAR system
 
@@ -304,6 +321,8 @@ For regular AAR submissions, the bot:
 
 The collage is a review convenience; original uploads are retained in the evidence thread. Image collage generation supports common image formats handled by the implementation, including PNG, JPEG, GIF, and WebP. Non-image evidence can remain in the original evidence thread even when it cannot be included in the collage.
 
+If evidence archiving fails after a report has been saved, the report remains pending and no points are awarded. The bot reports the failure so an AAR Moderator can investigate. The evidence thread reference is saved when the thread is created, helping reviewers locate partially archived evidence.
+
 ### AAR review process
 
 AAR reviews happen in `REVIEW_CHANNEL_ID` using reactions:
@@ -318,7 +337,9 @@ The reviewer must be a server member with at least one of:
 - The configured `NCO_ROLE_ID`.
 - The configured `MODERATOR_ROLE_ID`.
 
-The report submitter cannot approve or reject their own report. Unauthorized reactions are ignored and removed where possible. Reports already finalized cannot be decided again.
+**Self-review is prohibited:** neither the report submitter nor any registered report participant can approve or reject that report.
+
+Unauthorized reactions and self-review attempts are ignored and removed where possible. Reports already finalized cannot be decided again.
 
 On approval:
 
@@ -329,11 +350,11 @@ On approval:
 
 On rejection, no AAR points are awarded. The decision is recorded.
 
-The AAR panel's descriptive text currently says reports require administrator or AAR Moderator approval, but the implemented review permission check also accepts the configured NCO role.
+The AAR panel's descriptive text should identify Administrators, Admins, NCOs, and AAR Moderators/High Command as the permitted reviewers.
 
 ## Saga Points
 
-The following are the current formulas implemented in `index.js`. Points are calculated per participant and are awarded to participants only after approval, except where the separate Ordeal and Trial rules below apply.
+The following are the current formulas implemented in the regular AAR handlers. Points are calculated per participant and are awarded only after approval. Ordeals do not award Saga Points. Unproven Trials use their separate Pack Member reward rule.
 
 ### Operations
 
@@ -394,12 +415,16 @@ A +1 squad bonus applies when the report has more than one participant.
 
 Ordeals are a separate challenge-completion workflow with their own review channel and reward roles. They are not regular AAR submissions.
 
+**Ordeals award zero AAR points. They do not contribute to the Saga Points leaderboard.**
+
 ### Configured challenges
 
-| Challenge | Game mode | Difficulty | Configured base points | Reward role variable |
-|---|---|---|---:|---|
-| Lone Wolf | Operations | Absolute | 5 | `LONE_WOLF_ROLE_ID` |
-| Double Trouble | Stratagems | Hard | 6 | `DOUBLE_TROUBLE_ROLE_ID` |
+| Challenge | Game mode | Difficulty | Reward role variable |
+|---|---|---|---|
+| Lone Wolf | Operations | Absolute | `LONE_WOLF_ROLE_ID` |
+| Double Trouble | Stratagems | Hard | `DOUBLE_TROUBLE_ROLE_ID` |
+
+A challenge is selectable only when its corresponding reward role is configured.
 
 ### Submission
 
@@ -418,11 +443,18 @@ A squad must contain between one and three unique participants. Challenge comple
 
 - Submissions are sent to `ORDEAL_REVIEW_CHANNEL_ID`.
 - Reviews use ✅ to approve and ❌ to reject.
-- The reviewer permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators.
+- The reviewer permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators/High Command.
+- The submitter and registered participants cannot review their own Ordeal submission.
 - Suspicious participant overlap is flagged for manual attention and can generate an alert in `NCO_REVIEW_CHANNEL_ID`.
 - On approval, the configured challenge reward role is granted to the challenge completer(s), subject to Discord role permissions and hierarchy.
+- On rejection, no reward role is granted.
+- The review decision is recorded in the Ordeal audit log.
 
-**Current implementation note:** the code calculates Ordeal base and bonus points and writes approved Ordeal points to `ordeal_score_ledger`. Those points are included in the combined leaderboard. This is the behavior of the inspected code, even though the intended project design says Ordeals should award zero AAR points and should not affect the leaderboard. See [Known implementation gaps](#known-implementation-gaps).
+Ordeal submissions do not create Saga Points ledger entries or trigger a leaderboard reward. The legacy `ordeal_score_ledger` table may remain in the database for compatibility, but it is not used for current scoring or leaderboard calculations.
+
+Gene Seed and Armoury Data recorded through approved Ordeals can still be included separately in Saga History resource totals. These resources are not Saga Points.
+
+After a decision, the original Ordeal evidence thread is deleted. The review card and its audit information remain.
 
 ## Unproven Trial system
 
@@ -458,24 +490,34 @@ Trial reviews use Approve and Reject buttons. Reviewers must have at least one o
 
 The review must occur in `TRIAL_REVIEW_CHANNEL_ID` and must reference the original pending review message.
 
+Unlike regular AAR and Ordeal reviews, Trial reviews intentionally do not block a reviewer from reviewing their own submission.
+
 ### Progression and graduation
 
 - Each approved Trial adds progress for the selected Trial key to each Trial Completer.
+- Repeated completion of the same Trial key does not add duplicate progress.
 - A member graduates after completing all three distinct Trial keys.
 - On graduation, the bot attempts to remove `UNPROVEN_ROLE_ID` and grant `IRON_WOLVES_ROLE_ID`.
+- Existing Iron Wolves tenure is preserved rather than reset when the member already has a tenure record.
 - The bot prevents the Unproven role from being re-added to a member who has already graduated.
 - Role update failures are reported to `NCO_REVIEW_CHANNEL_ID`.
+
+If a graduation role action fails, the database progression remains recorded. The failure is reported for administrative follow-up.
 
 ### Trial Pack Member points
 
 At approval time, each Pack Member's current Unproven role status is checked:
 
-- No Unproven role at review: +2 Saga Points.
-- Still has the Unproven role at review: 0 Saga Points.
+| Unproven role at review | Saga Points |
+|---|---:|
+| No Unproven role | +2 |
+| Still has Unproven role | 0 |
 
 Trial Completers receive Trial progression, not these Pack Member points.
 
-**Current implementation note:** the pending Trial review embed displays `+3 Saga Points (Projected)` for eligible Pack Members, but the database approval logic awards +2. See [Known implementation gaps](#known-implementation-gaps).
+Pack Member points are recorded in `trial_score_ledger` only when the member qualifies for the +2 award. Zero-point Pack Members are still recorded in their submission review details.
+
+Approved Trial Pack Member points count toward the combined Saga Points leaderboard.
 
 ## Honor system
 
@@ -542,7 +584,7 @@ Use:
 /sagahistory member:@Member
 ```
 
-The command generates a profile card image containing the member's:
+The command generates a public profile card image containing the selected member's:
 
 - Saga Points total.
 - Gene Seed total.
@@ -552,25 +594,35 @@ The command generates a profile card image containing the member's:
 
 The card is generated using Sharp and the background asset at `assets/saga-background.png`.
 
+Saga Points in the card reflect approved AAR and Trial scoring. Ordeals contribute no points. Approved Ordeal Gene Seed and Armoury Data resources can still contribute to their respective resource totals.
+
 Iron Wolves tenure tracking:
 
 - Existing members with the configured Iron Wolves role are initialized when the bot starts.
 - When a member receives the role, the tenure start time is recorded.
 - When a member loses the role, the tenure record is deleted.
 - When a member leaves the server, their tenure record is deleted.
+- Trial graduation preserves an existing tenure record rather than resetting it.
+
+Members can request their own Saga History or another member's profile.
 
 ## Leaderboard
 
 The bot maintains an all-time top-10 leaderboard in `LEADERBOARD_CHANNEL_ID`.
 
-- Approved AAR points are included.
-- Approved Ordeal points are included by the current implementation.
-- Approved Trial Pack Member points are included.
-- Honor awards do not contribute points.
-- Rejected submissions do not contribute points.
-- The bot stores the leaderboard message ID in `bot_settings` and edits the saved message when refreshing. If the saved message cannot be reused, the bot can create a new one.
+The leaderboard includes:
 
-The current leaderboard footer text is outdated; see [Known implementation gaps](#known-implementation-gaps).
+- Approved regular AAR points.
+- Approved Trial Pack Member points.
+
+It excludes:
+
+- Ordeal submissions, which award zero Saga Points.
+- Honor awards.
+- Rejected submissions.
+- Trial Completer progression, which is not a Saga Points award.
+
+The bot stores the leaderboard message ID in `bot_settings` and edits the saved message when refreshing. If the saved message cannot be reused, the bot can create a new one.
 
 ## Database and persistence
 
@@ -596,6 +648,8 @@ Important persistence notes:
 
 Database initialization and migrations run through the database modules when the bot starts.
 
+The production Servitor setup is intended to begin with a fresh database. Do not copy development or test database files into production unless a deliberate migration has been planned and approved.
+
 ## Testing
 
 The repository contains a focused Operations modal test script. Run it from the project root:
@@ -607,6 +661,18 @@ node test-operations-modal.js
 The script checks the Operations modal structure, field constraints, difficulty values, difficulty-selection workflow, and participant-selection helper behavior.
 
 There is currently no `test` script in `package.json`, so `npm.cmd test` is not configured. The Operations test is not a full Discord integration test and does not verify live server permissions, channel configuration, role hierarchy, or end-to-end review behavior.
+
+JavaScript syntax can be checked separately:
+
+```powershell
+node --check .\index.js
+node --check .\trial.js
+node --check .\trial-database.js
+node --check .\database.js
+node --check .\leaderboard.js
+```
+
+A syntax check does not start the bot or verify live Discord behavior.
 
 ## Troubleshooting
 
@@ -636,15 +702,24 @@ There is currently no `test` script in `package.json`, so `npm.cmd test` is not 
 - Confirm the review message is a bot-created AAR report in `REVIEW_CHANNEL_ID`.
 - Use the exact ✅ or ❌ reaction.
 - Confirm the reviewer has one of the configured review permissions.
-- The report submitter cannot review their own report.
+- Remember that AAR submitters and registered participants cannot review their own reports.
 - Confirm the bot can read message history and manage reactions as required by the channel configuration.
 
-### Roles are not granted or removed
+### Trial reviews or graduation roles do not work
 
-- Verify the role ID in `.env`.
+- Verify `TRIAL_REVIEW_CHANNEL_ID`, `UNPROVEN_ROLE_ID`, and `IRON_WOLVES_ROLE_ID`.
+- Confirm the reviewer has an accepted Trial review permission.
 - Confirm the bot has Manage Roles permission.
-- Move the bot's highest role above every role it must grant or remove.
-- Check the bot console and the NCO review alert channel for follow-up errors.
+- Move the bot's highest role above the roles it must grant or remove.
+- Check the bot console and NCO review alert channel for follow-up errors.
+
+### Ordeal reward roles are not granted
+
+- Verify `ORDEAL_REVIEW_CHANNEL_ID`.
+- Verify the corresponding optional reward role variable is configured.
+- Confirm the bot has Manage Roles permission.
+- Move the bot's highest role above the reward role.
+- Check the bot console and NCO review alert channel for errors.
 
 ### Evidence collage is missing
 
@@ -652,17 +727,15 @@ There is currently no `test` script in `package.json`, so `npm.cmd test` is not 
 - Collage generation only includes supported image formats.
 - Check the bot console for image-processing or upload errors.
 
-## Known implementation gaps
+## Known implementation notes
 
-These are discrepancies observed in the inspected `main` branch. They are documented here so operators do not mistake the current behavior for the intended final design.
+The following are operational limitations or implementation details worth understanding. They are not claims that the features are missing.
 
-1. **Ordeal scoring conflicts with the intended design.** The current code calculates Ordeal points, writes them to `ordeal_score_ledger` on approval, and includes them in the leaderboard. The intended project rule is that Ordeals award zero AAR points and do not affect the leaderboard. The code must be changed before that intended rule is true.
-2. **Trial point preview is inconsistent.** The pending Trial review embed displays +3 projected Saga Points for eligible Pack Members, while the approval database logic awards +2.
-3. **Leaderboard footer is outdated.** The footer says `All-time rankings | Operations + Ordeals`, but the query includes AAR, Ordeal, and Trial score ledgers.
-4. **AAR panel description is narrower than the actual permission check.** The panel text refers to administrator or AAR Moderator approval, while the AAR review handler also accepts the configured NCO role.
-5. **No npm test script exists.** `test-operations-modal.js` is a standalone focused test, not a complete automated test suite.
-
-Do not treat this list as a claim that these issues have been fixed. Re-check the source code before removing an item from this section.
+1. **Ordeal scoring:** The legacy `ordeal_score_ledger` table and legacy point-related columns may remain in the database for compatibility. Current Ordeal approvals do not award Saga Points or contribute to the leaderboard.
+2. **Trial preview and approval:** Eligible Pack Members receive +2 Saga Points at approval, not +3. Members who still have the Unproven role at review receive zero.
+3. **AAR panel description:** The AAR review permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators/High Command. The panel description should reflect all four accepted permission paths.
+4. **No npm test script:** `test-operations-modal.js` is a standalone focused test, not a complete automated test suite.
+5. **Discord-side verification:** Local syntax checks and the Operations regression test do not replace live testing of channel permissions, role hierarchy, evidence uploads, reactions, and review workflows.
 
 ## License
 
