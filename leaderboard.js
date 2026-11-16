@@ -41,17 +41,6 @@ function getLeaderboardScores() {
 
       UNION ALL
 
-      -- Approved Ordeal submissions
-      SELECT
-        osl.user_id,
-        osl.points
-      FROM ordeal_score_ledger osl
-      INNER JOIN ordeal_submissions os
-        ON os.id = osl.submission_id
-      WHERE os.status = 'approved'
-
-      UNION ALL
-
       -- Approved Unproven Trial submissions
       SELECT
         tsl.user_id,
@@ -77,7 +66,7 @@ function createLeaderboardEmbed(scores) {
 
   if (scores.length === 0) {
     description =
-      'No approved AAR points have been awarded yet.';
+      'No approved AAR or Unproven Trial points have been awarded yet.';
   } else {
     let previousPoints = null;
     let currentRank = 0;
@@ -103,7 +92,7 @@ function createLeaderboardEmbed(scores) {
     .setTitle('SPACE MARINE 2 — AAR LEADERBOARD')
     .setDescription(description)
     .setFooter({
-      text: 'All-time rankings | Operations + Ordeals'
+      text: 'All-time rankings | Approved AAR Reports + Unproven Trials'
     })
     .setTimestamp();
 }

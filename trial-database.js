@@ -662,7 +662,7 @@ function reviewTrialSubmission(data) {
           trialKey: submission.trial_key,
           awarded: progressInsert.changes === 1,
           completedTrialCount,
-          graduated: progressInsert.changes === 1 && completedTrialCount === 3
+          graduated: completedTrialCount === 3
         };
       });
 

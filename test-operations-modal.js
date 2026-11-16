@@ -55,7 +55,7 @@ assert.deepEqual(
     'Select Operation',
     'Gene Seed',
     'Armoury Data',
-    'Squad Members',
+    'Pack Members',
     'Evidence Files'
   ]
 );

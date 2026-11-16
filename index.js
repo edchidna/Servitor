@@ -1291,39 +1291,6 @@ async function processReportReaction(reaction, user) {
       return;
     }
 
-    // ----------------------------------------
-    // PREVENT SELF-APPROVAL OR SELF-REJECTION
-    // ----------------------------------------
-
-    if (report.submitter_id === user.id) {
-
-      console.log(
-        `Self-review blocked for report #${reportId} by ${user.tag}.`
-      );
-
-      await reaction.users.remove(user.id).catch(error => {
-        console.error(
-          'Could not remove submitter reaction:',
-          error.message
-        );
-      });
-
-      return;
-    }
-
-    // ----------------------------------------
-    // CHECK REPORT STATUS
-    // ----------------------------------------
-
-    if (report.status !== 'pending') {
-
-      console.log(
-        `Report #${reportId} already has a final decision.`
-      );
-
-      await reaction.users.remove(user.id).catch(() => { });
-      return;
-    }
 
     // ----------------------------------------
     // GET REPORT PARTICIPANTS
@@ -1341,6 +1308,33 @@ async function processReportReaction(reaction, user) {
       );
       return;
     }
+
+    // ----------------------------------------
+    // PREVENT SELF-APPROVAL OR SELF-REJECTION
+    // ----------------------------------------
+
+    const isSubmitter = report.submitter_id === user.id;
+
+    const isParticipant = participants.some(
+      participant => participant.user_id === user.id
+    );
+
+    if (isSubmitter || isParticipant) {
+
+      console.log(
+        `Self-review blocked for report #${reportId} by ${user.tag}.`
+      );
+
+      await reaction.users.remove(user.id).catch(error => {
+        console.error(
+          'Could not remove reviewer reaction:',
+          error.message
+        );
+      });
+
+      return;
+    }
+
 
     // ----------------------------------------
     // DATABASE TRANSACTION
@@ -1418,6 +1412,17 @@ async function processReportReaction(reaction, user) {
       return;
     }
 
+    // Refresh leaderboard immediately after a successful decision.
+    if (decision === 'approved') {
+      try {
+        await refreshLeaderboard(client);
+      } catch (error) {
+        console.error(
+          'Could not refresh leaderboard after AAR approval:',
+          error
+        );
+      }
+    }
 
     // ----------------------------------------
     // UPDATE ORIGINAL REPORT WITH FINAL RESULT
@@ -1460,30 +1465,14 @@ async function processReportReaction(reaction, user) {
         Number(value.toFixed(2)).toString();
 
       const memberTotals = participants.map(participant => {
-
         const scoreResult = db.prepare(`
-  SELECT COALESCE(SUM(points), 0) AS total
-  FROM (
-    SELECT sl.points
-    FROM score_ledger sl
-    INNER JOIN reports r
-      ON r.id = sl.report_id
-    WHERE sl.user_id = ?
-      AND r.status = 'approved'
-
-    UNION ALL
-
-    SELECT osl.points
-    FROM ordeal_score_ledger osl
-    INNER JOIN ordeal_submissions os
-      ON os.id = osl.submission_id
-    WHERE osl.user_id = ?
-      AND os.status = 'approved'
-  )
-`).get(
-          participant.user_id,
-          participant.user_id
-        );
+            SELECT COALESCE(SUM(sl.points), 0) AS total
+            FROM score_ledger sl
+            INNER JOIN reports r
+            ON r.id = sl.report_id
+            WHERE sl.user_id = ?
+            AND r.status = 'approved'
+         `).get(participant.user_id);
 
         const newTotal = scoreResult.total;
 
@@ -1515,7 +1504,7 @@ async function processReportReaction(reaction, user) {
       };
 
       const memberTotalsField = {
-        name: 'Updated Member Totals',
+        name: 'Updated AAR Totals',
         value: memberTotals.join('\n'),
         inline: false
       };
@@ -1658,6 +1647,13 @@ async function processReportReaction(reaction, user) {
         files: collageFiles
       });
 
+    } catch (editError) {
+
+      console.error(
+        `Could not update review card for report #${reportId}. The database decision is already saved:`,
+        editError
+      );
+
     } finally {
 
       // ----------------------------------------
@@ -1720,17 +1716,7 @@ async function processReportReaction(reaction, user) {
     console.log(
       `Report #${reportId} ${decision} by ${user.tag}.`
     );
-    // Refresh leaderboard after successful approval.
-    if (decision === 'approved') {
-      try {
-        await refreshLeaderboard(client);
-      } catch (error) {
-        console.error(
-          'Could not refresh leaderboard after Operations approval:',
-          error
-        );
-      }
-    }
+
   } catch (error) {
 
     console.error(
@@ -1979,16 +1965,8 @@ async function processOrdealReaction(reaction, user) {
     // PREPARE REWARD AND POINT INFORMATION
     // --------------------------------------
 
-    const totalPoints = Number(submission.total_points);
 
-    if (
-      decision === 'approved' &&
-      (!Number.isFinite(totalPoints) || totalPoints < 0)
-    ) {
-      throw new Error(
-        `Ordeal #${submissionId} has invalid point information.`
-      );
-    }
+
 
     let rewardRole = null;
     const newlyAssignedMembers = [];
@@ -2049,7 +2027,7 @@ async function processOrdealReaction(reaction, user) {
         }
 
         // ----------------------------------
-        // SAVE DECISION AND AWARD POINTS
+        // SAVE APPROVAL DECISION
         // ----------------------------------
 
         const saveDecision = db.transaction(() => {
@@ -2085,24 +2063,7 @@ async function processOrdealReaction(reaction, user) {
             decision
           );
 
-          // Award the same approved points to every participant.
-          const insertPoints = db.prepare(`
-            INSERT INTO ordeal_score_ledger (
-              submission_id,
-              user_id,
-              points
-            )
-            VALUES (?, ?, ?)
-          `);
 
-          for (const participantId of participantIds) {
-
-            insertPoints.run(
-              submissionId,
-              participantId,
-              totalPoints
-            );
-          }
 
           return true;
         });
@@ -2221,12 +2182,12 @@ async function processOrdealReaction(reaction, user) {
         `**Challenge completion approved!**\n` +
         `Reward role: <@&${submission.reward_role_id}>\n` +
         `Role recipients: ${completerIds.map(id => `<@${id}>`).join(', ')}\n` +
-        `Points awarded: **${totalPoints} per participant**\n` +
+        `AAR points awarded: **0**\n` +
         `Approved by: <@${user.id}>`
       )
       : (
         `**Challenge submission rejected.**\n` +
-        `No reward role or points were granted.\n` +
+        `No reward role or AAR points were granted.\n` +
         `Rejected by: <@${user.id}>`
       );
 
@@ -2235,17 +2196,6 @@ async function processOrdealReaction(reaction, user) {
       value: resultDescription,
       inline: false
     });
-
-    if (decision === 'approved') {
-
-      updatedEmbed.addFields({
-        name: 'Final Participant Points',
-        value: participantIds
-          .map(id => `<@${id}> — **${totalPoints} points**`)
-          .join('\n'),
-        inline: false
-      });
-    }
 
     updatedEmbed.setFooter({
       text: `Space Marine 2 Ordeals | ${decision.toUpperCase()} by <@${user.id}>`
@@ -2344,17 +2294,7 @@ async function processOrdealReaction(reaction, user) {
     console.log(
       `Ordeal #${submissionId} ${decision} by <@${user.id}>.`
     );
-    // Refresh leaderboard after successful approval.
-    if (decision === 'approved') {
-      try {
-        await refreshLeaderboard(client);
-      } catch (error) {
-        console.error(
-          'Could not refresh leaderboard after Ordeal approval:',
-          error
-        );
-      }
-    }
+
   } catch (error) {
 
     console.error(
@@ -2847,7 +2787,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const selectedUser =
           interaction.options.getUser('member') || interaction.user;
-
+        await interaction.deferReply({
+          allowedMentions: { parse: [] }
+        });
         let member;
 
         try {
@@ -2860,10 +2802,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (!member) {
-          await interaction.reply({
+          await interaction.editReply({
             content:
               'That user is not currently a member of this server, or their member profile could not be fetched.',
-            flags: MessageFlags.Ephemeral,
             allowedMentions: { parse: [] }
           });
 
@@ -2883,16 +2824,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     UNION ALL
 
-    -- Approved Ordeal submissions
-    SELECT osl.points
-    FROM ordeal_score_ledger osl
-    INNER JOIN ordeal_submissions os
-      ON os.id = osl.submission_id
-    WHERE os.status = 'approved'
-      AND osl.user_id = ?
-
-    UNION ALL
-
     -- Approved Unproven Trial submissions
     SELECT tsl.points
     FROM trial_score_ledger tsl
@@ -2902,7 +2833,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       AND tsl.user_id = ?
   )
 `).get(
-          selectedUser.id,
           selectedUser.id,
           selectedUser.id
         ).total_points;
@@ -3021,10 +2951,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           interaction.guild.id,
           member.id
         );
-
-        await interaction.deferReply({
-          allowedMentions: { parse: [] }
-        });
 
         try {
           const cardBuffer = await createSagaHistoryCard({
@@ -3663,10 +3589,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             'Choose the challenge your squad completed.\n\n' +
             `${ordealDescriptions}\n\n` +
             '**Rewards (after approval):**\n' +
-            '• Gene Seed: +1 point.\n' +
-            '• Armoury Data: +0.5 points each.\n' +
-            '• Pack Bonus: +1 point when more than one member participates.\n\n' +
-            'All registered participants receive the same calculated AAR points.\n' +
+            '• The designated Discord role/title for approved challenge completers.\n\n' +
+            '**Ordeals award zero AAR points and do not affect the leaderboard.**\n' +
             'Only actual challenge completers receive the special Discord role.',
           components: [selectRow],
           flags: MessageFlags.Ephemeral
@@ -4048,25 +3972,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       // ----------------------------------
-      // CALCULATE PROVISIONAL POINTS
-      // ----------------------------------
-
-      const basePoints = Number(ordeal.basePoints);
-
-      const geneSeedBonus = geneSeed === 'Yes' ? 1 : 0;
-
-      const armouryBonus = armouryData * 0.5;
-
-      const squadBonus = participants.length > 1 ? 1 : 0;
-
-      const bonusPoints =
-        geneSeedBonus +
-        armouryBonus +
-        squadBonus;
-
-      const totalPoints = basePoints + bonusPoints;
-
-      // ----------------------------------
       // CHECK PREVIOUS SUBMISSIONS
       // ----------------------------------
 
@@ -4080,8 +3985,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       participants,
       operation_name,
       review_message_id
-    FROM ordeal_submissions
-    WHERE challenge_key = ?
+      FROM ordeal_submissions
+      WHERE challenge_key = ?
       AND status IN ('pending', 'approved')
     ORDER BY id DESC
   `).all(ordeal.key);
@@ -4248,9 +4153,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
             JSON.stringify(participants),
             geneSeed,
             armouryData,
-            basePoints,
-            bonusPoints,
-            totalPoints,
+            0,
+            0,
+            0,
             suspiciousFlag,
             JSON.stringify(suspiciousDetails)
           );
@@ -4336,9 +4241,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .join('\n')
             : 'None';
 
-        const participantPoints = participants
-          .map(id => `<@${id}> — **${totalPoints} points**`)
-          .join('\n');
 
         // ----------------------------------
         // CREATE REVIEW EMBED
@@ -4406,18 +4308,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
               inline: false
             },
             {
-              name: 'Points Breakdown',
-              value:
-                `Base: ${basePoints}\n` +
-                `Gene Seed: +${geneSeedBonus}\n` +
-                `Armoury Data: +${armouryBonus}\n` +
-                `Pack Bonus: +${squadBonus}\n` +
-                `**Total: ${totalPoints} points per participant**`,
-              inline: false
-            },
-            {
-              name: 'Provisional Participant Points',
-              value: participantPoints,
+              name: 'AAR Points',
+              value: '**0 points** — Ordeals do not contribute to Saga Points or the leaderboard.',
               inline: false
             },
             {
@@ -4550,14 +4442,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
           submissionId
         );
 
+
         // ----------------------------------
         // ADD REVIEW REACTIONS
         // ----------------------------------
 
-        await reviewMessage.react('✅').catch(console.error);
-        await reviewMessage.react('❌').catch(console.error);
+        try {
+          await reviewMessage.react('✅');
+          await reviewMessage.react('❌');
+
+        } catch (reactionError) {
+
+          console.error(
+            `[Ordeal] Failed to add review reactions for submission #${submissionId}:`,
+            reactionError
+          );
+
+          await interaction.editReply({
+            content:
+              `Your Ordeal submission #${submissionId} was saved, but the review reactions could not be added.\n\n` +
+              'The submission remains pending. Please contact an Administrator, NCO, or AAR Moderator.'
+          });
+          pendingOrdealWorkflows.delete(interaction.user.id);
+          return;
+        }
+
         submissionFinalized = true;
         pendingOrdealWorkflows.delete(interaction.user.id);
+
 
         // ----------------------------------
         // SEND SUSPICIOUS SUBMISSION ALERT
@@ -4751,10 +4663,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.editReply({
           content:
             `Your **${ordeal.name}** completion has been submitted successfully!\n\n` +
-            `**Provisional points:** ${totalPoints} per participant\n` +
+            `**AAR Points:** 0\n` +
             `**Participants:** ${participants.length}\n` +
             `**Challenge completers:** ${completerIds.length}\n\n` +
-            'Points and challenge rewards will be processed after administrator or AAR Moderator approval.'
+            'Your challenge reward role will be processed after Admin, NCO, or High Command review.'
         });
 
         console.log(
@@ -4854,6 +4766,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
           pendingOrdealWorkflows.delete(interaction.user.id);
         }
+
 
         if (interaction.deferred || interaction.replied) {
           await interaction.editReply({
@@ -5245,6 +5158,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
             reason: 'Store original AAR evidence files'
           });
           evidenceThreadId = evidenceThread.id;
+          await db.prepare(`
+            UPDATE reports
+            SET evidence_thread_id = ?
+            WHERE id = ?
+             AND status = 'pending'
+         `).run(
+            evidenceThreadId,
+            reportId
+          );
           for (const file of permanentFiles) {
 
             const evidenceMessage = await evidenceThread.send({
@@ -5657,6 +5579,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
 
           evidenceThreadId = evidenceThread.id;
+          await db.prepare(`
+            UPDATE reports
+            SET evidence_thread_id = ?
+            WHERE id = ?
+             AND status = 'pending'
+         `).run(
+            evidenceThreadId,
+            reportId
+          );
 
           for (const file of permanentFiles) {
 
@@ -6005,6 +5936,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
 
           evidenceThreadId = evidenceThread.id;
+          await db.prepare(`
+           UPDATE reports
+           SET evidence_thread_id = ?
+           WHERE id = ?
+            AND status = 'pending'
+          `).run(
+            evidenceThreadId,
+            reportId
+          );
 
           for (const file of permanentFiles) {
 
@@ -6421,6 +6361,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
 
           evidenceThreadId = evidenceThread.id;
+          await db.prepare(`
+           UPDATE reports
+           SET evidence_thread_id = ?
+           WHERE id = ?
+            AND status = 'pending'
+          `).run(
+            evidenceThreadId,
+            reportId
+          );
 
           for (const file of permanentFiles) {
 
