@@ -28,6 +28,34 @@ const {
   FileUploadBuilder
 } = require('discord.js');
 
+const SAGA_RANK_PRIORITY = [
+  { id: '1569256588689281105', name: 'Great Wolf' },
+  { id: '1570671088290111488', name: 'High Wolf Lord' },
+  { id: '1569914867035545600', name: 'High Rune Priest' },
+  { id: '1569914652564000809', name: 'High Iron Priest' },
+  { id: '1569914819971129374', name: 'High Wolf Priest' },
+  { id: '1569517129005273108', name: 'Wolf Lord' },
+  { id: '1570954587253506128', name: 'Hunt Master' },
+  { id: '1571500983207333958', name: 'Fang-Breaker' },
+  { id: '1571501284698234910', name: 'Warbringer' },
+  { id: '1569520499246112798', name: 'Long Fang Pack-Leader' },
+  { id: '1569520164087660634', name: 'Wolf Scout Pack-Leader' },
+  { id: '1569520720986505287', name: 'Grey Hunter Pack-Leader' },
+  { id: '1569517335989977098', name: 'Blood Claw Pack-Leader' },
+  { id: '1569519400372015246', name: 'Skyclaw Pack-Leader' },
+  { id: '1569517914124591224', name: 'Iron Priest' },
+  { id: '1569517843937099838', name: 'Rune Priest' },
+  { id: '1569517984437899325', name: 'Wolf Priest' },
+  { id: '1569517265919934564', name: 'Wolf Guard' },
+  { id: '1569518522302861343', name: 'Wolf Champion' },
+  { id: '1569518076439957604', name: 'Wulfen' },
+  { id: '1569516908447793172', name: 'Wolf Scout' },
+  { id: '1569516824058535967', name: 'Long Fang' },
+  { id: '1569516721709252730', name: 'Grey Hunter' },
+  { id: '1569516607242506381', name: 'Skyclaw' },
+  { id: '1569516542742364170', name: 'Blood Claw' }
+];
+
 function escapeSvgText(value) {
   return String(value)
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
@@ -95,6 +123,7 @@ async function fetchSagaHistoryAvatar(avatarUrl) {
 
 async function createSagaHistoryCard({
   displayName,
+  rankName,
   avatarUrl,
   sagaPoints,
   geneSeedTotal,
@@ -153,6 +182,7 @@ async function createSagaHistoryCard({
 
   const text = {
     name: escapeSvgText(nameText || 'Unknown Member'),
+    rankName: escapeSvgText(rankName || 'Unranked'),
     sagaPoints: escapeSvgText(sagaPoints),
     geneSeedTotal: escapeSvgText(geneSeedTotal),
     armouryDataTotal: escapeSvgText(armouryDataTotal),
@@ -164,7 +194,7 @@ async function createSagaHistoryCard({
   // HONOR DISPLAY DATA
   // ==========================================
 
-  
+
   const honorIconLayers = [];
 
   const createHonorColumnSvg = (items, x) => {
@@ -188,7 +218,7 @@ async function createSagaHistoryCard({
     }).join('');
   };
 
-  
+
   const createHonorIconLayers = async (items, x) => {
     const path = require('path');
     const fs = require('fs');
@@ -279,7 +309,7 @@ async function createSagaHistoryCard({
                             stroke-width="2"
                             stroke-linejoin="round"
                             paint-order="stroke fill" font-family="Pirata One, sans-serif" font-size="49" font-weight="400"
-                      >Rank: Coming Soon</text>
+                      >Rank: ${text.rankName}</text>
 
       <text x="110" y="382" fill="#b9c5bd" 
                             stroke="#0a1721"
@@ -2878,6 +2908,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
+        const rankName = SAGA_RANK_PRIORITY.find(rank =>
+          member.roles.cache.has(rank.id)
+        )?.name || 'Unranked';
+
         const sagaPoints = db.prepare(`
   SELECT COALESCE(SUM(points), 0) AS total_points
   FROM (
@@ -3022,6 +3056,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         try {
           const cardBuffer = await createSagaHistoryCard({
             displayName: member.displayName,
+            rankName,
             avatarUrl: member.displayAvatarURL({
               extension: 'png',
               size: 256

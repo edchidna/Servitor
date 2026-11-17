@@ -87,6 +87,7 @@ async function main() {
 
   const cardBuffer = await createSagaHistoryCard({
     displayName: 'Saga History Test Member',
+    rankName: 'Great Wolf',
     avatarUrl: null,
     sagaPoints: 1250,
     geneSeedTotal: 12,
