@@ -41,6 +41,61 @@ const commands = [
         .setRequired(false)
     ),
 
+      new SlashCommandBuilder()
+    .setName('sagapoint')
+    .setDescription('Manually manage a member’s Saga Points.')
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('add')
+        .setDescription('Add Saga Points to a member.')
+        .addUserOption(option =>
+          option
+            .setName('member')
+            .setDescription('The member receiving Saga Points.')
+            .setRequired(true)
+        )
+        .addNumberOption(option =>
+          option
+            .setName('amount')
+            .setDescription('The amount of Saga Points to add.')
+            .setMinValue(0.01)
+            .setRequired(true)
+        )
+        .addStringOption(option =>
+          option
+            .setName('reason')
+            .setDescription('Why are these Saga Points being added?')
+            .setMinLength(1)
+            .setMaxLength(500)
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('deduct')
+        .setDescription('Deduct Saga Points from a member.')
+        .addUserOption(option =>
+          option
+            .setName('member')
+            .setDescription('The member losing Saga Points.')
+            .setRequired(true)
+        )
+        .addNumberOption(option =>
+          option
+            .setName('amount')
+            .setDescription('The amount of Saga Points to deduct.')
+            .setMinValue(0.01)
+            .setRequired(true)
+        )
+        .addStringOption(option =>
+          option
+            .setName('reason')
+            .setDescription('Why are these Saga Points being deducted?')
+            .setMinLength(1)
+            .setMaxLength(500)
+            .setRequired(true)
+        )
+    ),
   new SlashCommandBuilder()
     .setName('honor')
     .setDescription('Manage member Honors and Honor settings.')

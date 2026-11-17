@@ -2466,6 +2466,276 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
 
       // ======================================
+      // MANUAL SAGA POINT COMMAND
+      // ======================================
+
+      if (interaction.commandName === 'sagapoint') {
+
+        if (!interaction.guild) {
+          await interaction.reply({
+            content: 'Saga Point commands can only be used inside a server.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+        await interaction.deferReply();
+
+        const subcommand = interaction.options.getSubcommand();
+        const targetUser = interaction.options.getUser('member', true);
+        const requestedPoints = interaction.options.getNumber('amount', true);
+        const reason = interaction.options.getString('reason', true).trim();
+
+        // --------------------------------------
+        // VERIFY EXECUTOR PERMISSIONS
+        // --------------------------------------
+
+        let executor;
+
+        try {
+          executor = await interaction.guild.members.fetch(
+            interaction.user.id
+          );
+        } catch (error) {
+          console.error(
+            'Could not fetch Saga Point command executor:',
+            error.message
+          );
+        }
+
+        if (!executor) {
+          await interaction.reply({
+            content: 'Could not verify your server permissions.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+
+        const canManageSagaPoints =
+          (
+            process.env.ADMIN_ROLE_ID &&
+            executor.roles.cache.has(process.env.ADMIN_ROLE_ID)
+          ) ||
+          (
+            process.env.NCO_ROLE_ID &&
+            executor.roles.cache.has(process.env.NCO_ROLE_ID)
+          ) ||
+          (
+            process.env.MODERATOR_ROLE_ID &&
+            executor.roles.cache.has(process.env.MODERATOR_ROLE_ID)
+          );
+
+        if (!canManageSagaPoints) {
+          await interaction.reply({
+            content:
+              'You need the Admin, NCO, or High Command role to manage Saga Points.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+
+        if (
+          !Number.isFinite(requestedPoints) ||
+          requestedPoints <= 0 ||
+          !reason
+        ) {
+          await interaction.reply({
+            content: 'Please provide a valid amount and reason.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+
+        // --------------------------------------
+        // VERIFY TARGET MEMBER
+        // --------------------------------------
+
+        let targetMember;
+
+        try {
+          targetMember = await interaction.guild.members.fetch(
+            targetUser.id
+          );
+        } catch (error) {
+          console.error(
+            'Could not fetch Saga Point target member:',
+            error.message
+          );
+        }
+
+        if (!targetMember) {
+          await interaction.reply({
+            content: 'The selected member could not be found in this server.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+
+        // --------------------------------------
+        // CALCULATE CURRENT SAGA POINT BALANCE
+        // --------------------------------------
+
+        const getCurrentSagaPoints = db.prepare(`
+          SELECT COALESCE(SUM(points), 0) AS total_points
+          FROM (
+            SELECT sl.points
+            FROM score_ledger sl
+            INNER JOIN reports r
+              ON r.id = sl.report_id
+            WHERE r.status = 'approved'
+              AND sl.user_id = ?
+
+            UNION ALL
+
+            SELECT tsl.points
+            FROM trial_score_ledger tsl
+            INNER JOIN trial_submissions ts
+              ON ts.id = tsl.submission_id
+            WHERE ts.status = 'approved'
+              AND tsl.user_id = ?
+
+            UNION ALL
+
+            SELECT spa.points_delta AS points
+            FROM saga_point_adjustments spa
+            WHERE spa.guild_id = ?
+              AND spa.user_id = ?
+          )
+        `);
+
+        // --------------------------------------
+        // RECORD ADJUSTMENT ATOMICALLY
+        // --------------------------------------
+
+        const applyAdjustment = db.transaction(() => {
+
+          const currentBalance = Math.max(
+            0,
+            Number(
+              getCurrentSagaPoints.get(
+                targetUser.id,
+                targetUser.id,
+                interaction.guild.id,
+                targetUser.id
+              ).total_points
+            )
+          );
+
+          const appliedPoints = subcommand === 'deduct'
+            ? Math.min(requestedPoints, currentBalance)
+            : requestedPoints;
+
+          const pointsDelta = subcommand === 'deduct'
+            ? -appliedPoints
+            : appliedPoints;
+
+          const result = db.prepare(`
+            INSERT INTO saga_point_adjustments (
+              guild_id,
+              user_id,
+              moderator_id,
+              action,
+              requested_points,
+              applied_points,
+              points_delta,
+              reason
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            interaction.guild.id,
+            targetUser.id,
+            interaction.user.id,
+            subcommand,
+            requestedPoints,
+            appliedPoints,
+            pointsDelta,
+            reason
+          );
+
+          const newBalance = Math.max(
+            0,
+            currentBalance + pointsDelta
+          );
+
+          return {
+            auditId: Number(result.lastInsertRowid),
+            currentBalance,
+            appliedPoints,
+            newBalance
+          };
+        });
+
+        let adjustment;
+
+        try {
+          adjustment = applyAdjustment();
+        } catch (error) {
+          console.error('Saga Point adjustment failed:', error);
+
+          await interaction.editReply({
+            content: 'The Saga Point adjustment failed. No changes were saved.'
+          });
+          return;
+        }
+
+        // --------------------------------------
+        // REFRESH LEADERBOARD
+        // --------------------------------------
+
+        let leaderboardUpdated = true;
+
+        try {
+          await refreshLeaderboard(client);
+        } catch (error) {
+          leaderboardUpdated = false;
+          console.error(
+            'Saga Point adjustment succeeded, but leaderboard refresh failed:',
+            error
+          );
+        }
+
+        // --------------------------------------
+        // CONFIRM ADJUSTMENT
+        // --------------------------------------
+
+        const actionLabel = subcommand === 'add'
+          ? 'Added'
+          : 'Deducted';
+
+        const confirmation =
+          `**Saga Points ${subcommand === 'add' ? 'Added' : 'Deducted'}**\n\n` +
+          `**Member:** <@${targetUser.id}>\n` +
+          `**Requested:** ${requestedPoints.toLocaleString('en-US')} points\n` +
+          `**${actionLabel}:** ${adjustment.appliedPoints.toLocaleString('en-US')} points\n` +
+          `**Previous balance:** ${adjustment.currentBalance.toLocaleString('en-US')} points\n` +
+          `**New balance:** ${adjustment.newBalance.toLocaleString('en-US')} points\n` +
+          `**Reason:** ${reason}\n` +
+          `**Recorded by:** <@${interaction.user.id}>\n` +
+          `**Audit ID:** #${adjustment.auditId}` +
+          (
+            adjustment.appliedPoints < requestedPoints
+              ? '\n\nThe deduction was limited to the member’s available balance.'
+              : ''
+          ) +
+          (
+            leaderboardUpdated
+              ? ''
+              : '\n\n⚠️ The adjustment was saved, but the leaderboard could not be refreshed.'
+          );
+
+        await interaction.editReply({
+          content: confirmation,
+          allowedMentions: { parse: [] }
+        });
+
+        console.log(
+          `Saga Points ${subcommand}: ${adjustment.appliedPoints} points for ${targetUser.id} by ${interaction.user.id}. Audit #${adjustment.auditId}.`
+        );
+
+        return;
+      }
+
+
+      // ======================================
       // HONOR COMMANDS
       // ======================================
 
@@ -2858,6 +3128,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
             '`fixed` — Honors always occupy their assigned positions (1–5 left, 6–10 right).\n' +
             '`sequential` — Active Honors fill the columns from oldest award to newest.\n\n' +
 
+            '**MANUAL SAGA POINT MANAGEMENT**\n' +
+            '`/sagapoint add` — Add Saga Points to a member.\n' +
+            '`/sagapoint deduct` — Deduct Saga Points from a member.\n' +
+            'Both commands require a reason and are available to Admins, NCOs, and High Command.\n\n' +
+
             '**Permissions**\n' +
             'Only server Administrators, Admin role members, and AAR Moderators can manage Honors. ' +
             'NCOs cannot manage Honors unless they also have one of those permissions.\n' +
@@ -2913,28 +3188,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
         )?.name || 'Unranked';
 
         const sagaPoints = db.prepare(`
-  SELECT COALESCE(SUM(points), 0) AS total_points
-  FROM (
-    -- Approved AAR reports
-    SELECT sl.points
-    FROM score_ledger sl
-    INNER JOIN reports r
-      ON r.id = sl.report_id
-    WHERE r.status = 'approved'
-      AND sl.user_id = ?
+          SELECT COALESCE(SUM(points), 0) AS total_points
+          FROM (
+            -- Approved AAR reports
+            SELECT sl.points
+            FROM score_ledger sl
+            INNER JOIN reports r
+              ON r.id = sl.report_id
+            WHERE r.status = 'approved'
+              AND sl.user_id = ?
 
-    UNION ALL
+            UNION ALL
 
-    -- Approved Unproven Trial submissions
-    SELECT tsl.points
-    FROM trial_score_ledger tsl
-    INNER JOIN trial_submissions ts
-      ON ts.id = tsl.submission_id
-    WHERE ts.status = 'approved'
-      AND tsl.user_id = ?
-  )
-`).get(
+            -- Approved Unproven Trial submissions
+            SELECT tsl.points
+            FROM trial_score_ledger tsl
+            INNER JOIN trial_submissions ts
+              ON ts.id = tsl.submission_id
+            WHERE ts.status = 'approved'
+              AND tsl.user_id = ?
+
+            UNION ALL
+
+            -- Manual Saga Point adjustments
+            SELECT spa.points_delta AS points
+            FROM saga_point_adjustments spa
+            WHERE spa.guild_id = ?
+              AND spa.user_id = ?
+          )
+        `).get(
           selectedUser.id,
+          selectedUser.id,
+          interaction.guild.id,
           selectedUser.id
         ).total_points;
 

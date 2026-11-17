@@ -265,6 +265,32 @@ db.exec(`
   ON ordeal_score_ledger(user_id);
 `);
 
+// ----------------------------------------
+// MANUAL SAGA POINT ADJUSTMENTS
+// ----------------------------------------
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS saga_point_adjustments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    moderator_id TEXT NOT NULL,
+
+    action TEXT NOT NULL
+      CHECK (action IN ('add', 'deduct')),
+
+    requested_points REAL NOT NULL,
+    applied_points REAL NOT NULL,
+    points_delta REAL NOT NULL,
+
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_saga_adjustments_user
+  ON saga_point_adjustments(guild_id, user_id);
+`);
+
 console.log('AAR database initialized successfully.');
 
 module.exports = db;

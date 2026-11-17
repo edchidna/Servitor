@@ -49,6 +49,14 @@ function getLeaderboardScores() {
       INNER JOIN trial_submissions ts
         ON ts.id = tsl.submission_id
       WHERE ts.status = 'approved'
+
+      UNION ALL
+
+      -- Manual Saga Point adjustments
+      SELECT
+        user_id,
+        points_delta AS points
+      FROM saga_point_adjustments
     )
     GROUP BY user_id
     ORDER BY total_points DESC, user_id ASC
@@ -66,7 +74,7 @@ function createLeaderboardEmbed(scores) {
 
   if (scores.length === 0) {
     description =
-      'No approved AAR or Unproven Trial points have been awarded yet.';
+      'No Saga Points have been recorded yet.';
   } else {
     let previousPoints = null;
     let currentRank = 0;
@@ -92,7 +100,7 @@ function createLeaderboardEmbed(scores) {
     .setTitle('SPACE MARINE 2 — AAR LEADERBOARD')
     .setDescription(description)
     .setFooter({
-      text: 'All-time rankings | Approved AAR Reports + Unproven Trials'
+      text: 'All-time rankings | AAR + Trials + Manual Adjustments'
     })
     .setTimestamp();
 }
