@@ -8,7 +8,7 @@ const db = honorDatabase.db;
 
 function getAllHonors() {
     return db.prepare(`
-        SELECT honor_id, display_name, display_order
+        SELECT honor_id, display_name, display_order, icon_path
         FROM honors
         ORDER BY display_order ASC
     `).all();
@@ -16,7 +16,7 @@ function getAllHonors() {
 
 function getHonorById(honorId) {
     return db.prepare(`
-        SELECT honor_id, display_name, display_order
+        SELECT honor_id, display_name, display_order, icon_path
         FROM honors
         WHERE honor_id = ?
     `).get(honorId);
@@ -29,6 +29,7 @@ function getMemberHonors(guildId, userId) {
             ha.honor_id,
             h.display_name,
             h.display_order,
+            h.icon_path,
             ha.awarded_by,
             ha.awarded_at
         FROM honor_awards ha
@@ -84,7 +85,6 @@ function awardHonor(guildId, userId, honorId, moderatorId) {
     };
 }
 
-
 function removeHonor(guildId, userId, honorId, moderatorId) {
     const activeAward = db.prepare(`
         SELECT id
@@ -123,6 +123,7 @@ function getMemberHonorHistory(guildId, userId) {
             ha.id,
             ha.honor_id,
             h.display_name,
+            h.icon_path,
             ha.awarded_by,
             ha.awarded_at,
             ha.is_active,
@@ -210,6 +211,7 @@ function getHonorDisplayLayout(guildId, userId) {
             ha.honor_id,
             h.display_name,
             h.display_order,
+            h.icon_path,
             ha.awarded_at
         FROM honor_awards ha
         INNER JOIN honors h

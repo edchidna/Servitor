@@ -131,7 +131,7 @@ async function createSagaHistoryCard({
 
   const darkOverlay = Buffer.from(`
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-      <rect width="${width}" height="${height}" fill="#000000" opacity="0.3"/>
+      <rect width="${width}" height="${height}" fill="#000000" opacity="0.72"/>
     </svg>
   `);
   const darkenedBackground = await sharp(backgroundBuffer)
@@ -159,18 +159,22 @@ async function createSagaHistoryCard({
     tenure: escapeSvgText(tenure)
   };
 
+
   // ==========================================
   // HONOR DISPLAY DATA
   // ==========================================
+
+  
+  const honorIconLayers = [];
 
   const createHonorColumnSvg = (items, x) => {
     return items.map((item, index) => {
       if (!item) return '';
 
-      const y = 610 + (index * 36);
+      const y = 610 + (index * 42);
 
       return `
-        <text x="${x}" y="${y}"
+        <text x="${x + 48}" y="${y}"
               fill="#f3f0e8"
               stroke="#0a1721"
               stroke-width="1.5"
@@ -184,15 +188,77 @@ async function createSagaHistoryCard({
     }).join('');
   };
 
+  
+  const createHonorIconLayers = async (items, x) => {
+    const path = require('path');
+    const fs = require('fs');
+
+    const honorsDirectory = path.resolve(
+      __dirname,
+      'assets',
+      'honors'
+    );
+
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+
+      if (!item?.icon_path) continue;
+
+      const iconPath = path.resolve(__dirname, item.icon_path);
+
+      if (
+        !iconPath.startsWith(honorsDirectory + path.sep) ||
+        !fs.existsSync(iconPath)
+      ) {
+        console.warn(
+          `[Saga History] Honor icon unavailable: ${item.icon_path}`
+        );
+        continue;
+      }
+
+      try {
+        const iconBuffer = await sharp(iconPath, {
+          limitInputPixels: 4_000_000
+        })
+          .resize(32, 32, {
+            fit: 'contain'
+          })
+          .png()
+          .toBuffer();
+
+        honorIconLayers.push({
+          input: iconBuffer,
+          left: x,
+          top: 583 + (index * 42)
+        });
+
+      } catch (error) {
+        console.error(
+          `[Saga History] Could not load Honor icon ${item.icon_path}:`,
+          error.message
+        );
+      }
+    }
+  };
+
+
+  const honorLeftItems = honorLayout?.leftColumn || [];
+  const honorRightItems = honorLayout?.rightColumn || [];
+
   const honorLeftSvg = createHonorColumnSvg(
-    honorLayout?.leftColumn || [],
+    honorLeftItems,
     840
   );
 
   const honorRightSvg = createHonorColumnSvg(
-    honorLayout?.rightColumn || [],
+    honorRightItems,
     1160
   );
+
+  await Promise.all([
+    createHonorIconLayers(honorLeftItems, 840),
+    createHonorIconLayers(honorRightItems, 1160)
+  ]);
 
   const cardSvg = Buffer.from(`
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -350,6 +416,7 @@ async function createSagaHistoryCard({
   })
     .composite([
       { input: cardDesign },
+      ...honorIconLayers,
       {
         input: circularAvatar,
         left: 76,
