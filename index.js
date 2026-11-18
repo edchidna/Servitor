@@ -2,6 +2,7 @@
 require('dotenv').config();
 
 const db = require('./database');
+const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
 const { refreshLeaderboard } = require('./leaderboard');
 const trial = require('./trial');
