@@ -36,6 +36,7 @@ async function main() {
 
   const sandbox = {
     sharp,
+    Resvg: require('@resvg/resvg-js').Resvg,
     Buffer,
     console,
     __dirname,

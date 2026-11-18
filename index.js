@@ -4,6 +4,7 @@ require('dotenv').config();
 const db = require('./database');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
+const { Resvg } = require('@resvg/resvg-js');
 const { refreshLeaderboard } = require('./leaderboard');
 const trial = require('./trial');
 const honor = require('./honor');
@@ -371,7 +372,7 @@ async function createSagaHistoryCard({
                             stroke-width="2"
                             stroke-linejoin="round"
                            paint-order="stroke fill" font-family="Pirata One, sans-serif" font-size="31" font-weight="700" letter-spacing="3"
-                      >HONORS</text>
+                      >AWARDS</text>
                           ${honorLeftSvg}
                           ${honorRightSvg}
 
@@ -436,11 +437,23 @@ async function createSagaHistoryCard({
     `);
   }
 
-  const cardDesign = await sharp(cardSvg, {
-    limitInputPixels: width * height
-  })
-    .png()
-    .toBuffer();
+ const cardRenderer = new Resvg(cardSvg, {
+  font: {
+    fontFiles: [
+      require('path').join(
+        __dirname,
+        'assets',
+        'fonts',
+        'PirataOne-Regular.ttf'
+      )
+    ],
+    loadSystemFonts: true
+  }
+});
+
+const cardDesign = Buffer.from(
+  cardRenderer.render().asPng()
+);
 
   return sharp(darkenedBackground, {
     limitInputPixels: width * height
@@ -5234,48 +5247,6 @@ db.prepare(`
             parse: []
           }
         });
-
-        // ----------------------------------
-        // CREATE THREAD FOR ORIGINAL EVIDENCE
-        // ----------------------------------
-
-        let originalEvidenceLinks = [];
-        let evidenceThreadId = null;
-
-        if (permanentFiles.length > 0) {
-
-          const evidenceThread = await reviewMessage.startThread({
-            name: `Original Evidence - Report #${reportId}`,
-            autoArchiveDuration: 1440,
-            reason: 'Store original AAR evidence files'
-          });
-          evidenceThreadId = evidenceThread.id;
-          await db.prepare(`
-            UPDATE reports
-            SET evidence_thread_id = ?
-            WHERE id = ?
-             AND status = 'pending'
-         `).run(
-            evidenceThreadId,
-            reportId
-          );
-          for (const file of permanentFiles) {
-
-            const evidenceMessage = await evidenceThread.send({
-              files: [file]
-            });
-
-            const uploadedFile = evidenceMessage.attachments.first();
-
-            if (uploadedFile) {
-              originalEvidenceLinks.push({
-                name: uploadedFile.name,
-                url: evidenceMessage.url
-              });
-            }
-          }
-        }
-
 
 
         // ----------------------------------

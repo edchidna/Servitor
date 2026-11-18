@@ -15,7 +15,6 @@ const {
 
 } = require('discord.js');
 
-const sharp = require('sharp');
 const trialDatabase = require('./trial-database');
 const db = trialDatabase.db;
 const { refreshLeaderboard } = require('./leaderboard');
@@ -238,69 +237,6 @@ async function publishTrialPanel(client) {
     return newPanel;
 }
 
-
-// ==========================================
-// TRIAL EVIDENCE COLLAGE
-// ==========================================
-
-async function createTrialEvidenceCollage(images) {
-    const imageExtensions = /\.(png|jpe?g|gif|webp)$/i;
-
-    const validImages = images.filter(image =>
-        imageExtensions.test(image.name)
-    );
-
-    if (validImages.length === 0) {
-        return null;
-    }
-
-    const columns = 3;
-    const cellWidth = 400;
-    const cellHeight = 300;
-    const padding = 12;
-
-    const rows = Math.ceil(validImages.length / columns);
-
-    const collageWidth = columns * cellWidth;
-    const collageHeight = rows * cellHeight;
-
-    const composites = [];
-
-    for (let i = 0; i < validImages.length; i++) {
-        const image = validImages[i];
-
-        const processedImage = await sharp(image.buffer)
-            .rotate()
-            .resize(
-                cellWidth - padding * 2,
-                cellHeight - padding * 2,
-                {
-                    fit: 'contain',
-                    background: '#202225'
-                }
-            )
-            .png()
-            .toBuffer();
-
-        composites.push({
-            input: processedImage,
-            left: (i % columns) * cellWidth + padding,
-            top: Math.floor(i / columns) * cellHeight + padding
-        });
-    }
-
-    return sharp({
-        create: {
-            width: collageWidth,
-            height: collageHeight,
-            channels: 3,
-            background: '#202225'
-        }
-    })
-        .composite(composites)
-        .png()
-        .toBuffer();
-}
 
 // ==========================================
 // TRIAL MEMBER ROLE HELPERS
@@ -664,7 +600,6 @@ async function handleTrialSubmission(interaction) {
 
     let submissionId = null;
     let reviewMessage = null;
-    let evidenceThread = null;
 
     try {
         // ----------------------------------
@@ -760,13 +695,6 @@ async function handleTrialSubmission(interaction) {
             packMembers: roleStatuses.packMembers
         });
 
-        // ----------------------------------
-        // GENERATE COLLAGE
-        // ----------------------------------
-
-        const collageBuffer = await createTrialEvidenceCollage(
-            evidenceFiles
-        );
 
         // ----------------------------------
         // FETCH REVIEW CHANNEL
@@ -809,37 +737,9 @@ async function handleTrialSubmission(interaction) {
             evidenceCount: evidenceFiles.length
         });
 
-        if (collageBuffer) {
-            embed.setImage(`attachment://trial-${submissionId}-collage.png`);
-        }
-
         // ----------------------------------
-        // SEND REVIEW REPORT
+        // PREPARE ORIGINAL EVIDENCE ATTACHMENTS
         // ----------------------------------
-
-        const reportPayload = {
-            embeds: [embed],
-            components: createTrialReviewButtons(submissionId),
-            files: collageBuffer
-                ? [
-                    new AttachmentBuilder(
-                        collageBuffer,
-                        { name: `trial-${submissionId}-collage.png` }
-                    )
-                ]
-                : []
-        };
-
-        reviewMessage = await reviewChannel.send(reportPayload);
-
-        // ----------------------------------
-        // CREATE EVIDENCE THREAD
-        // ----------------------------------
-
-        evidenceThread = await reviewMessage.startThread({
-            name: `Trial ${submissionId} Evidence`,
-            autoArchiveDuration: 1440
-        });
 
         const evidenceAttachments = evidenceFiles.map(file =>
             new AttachmentBuilder(
@@ -848,10 +748,17 @@ async function handleTrialSubmission(interaction) {
             )
         );
 
-        await evidenceThread.send({
-            content: `Original evidence files for Trial submission #${submissionId}.`,
+        // ----------------------------------
+        // SEND REVIEW REPORT WITH ORIGINAL EVIDENCE
+        // ----------------------------------
+
+        const reportPayload = {
+            embeds: [embed],
+            components: createTrialReviewButtons(submissionId),
             files: evidenceAttachments
-        });
+        };
+
+        reviewMessage = await reviewChannel.send(reportPayload);
 
         // ----------------------------------
         // SAVE DISCORD REFERENCES
@@ -860,7 +767,7 @@ async function handleTrialSubmission(interaction) {
         trialDatabase.setTrialDiscordReferences({
             submissionId,
             reviewMessageId: reviewMessage.id,
-            evidenceThreadId: evidenceThread.id
+            evidenceThreadId: null
         });
 
         // ----------------------------------
@@ -882,13 +789,6 @@ async function handleTrialSubmission(interaction) {
     } catch (error) {
         console.error('Trial submission failed:', error);
 
-        // ----------------------------------
-        // CLEAN UP PARTIAL DISCORD MESSAGES
-        // ----------------------------------
-
-        if (evidenceThread) {
-            await evidenceThread.delete().catch(console.error);
-        }
 
         if (reviewMessage) {
             await reviewMessage.delete().catch(console.error);
@@ -1270,41 +1170,6 @@ async function handleTrialReviewInteraction(interaction) {
         }
 
 
-        // Delete the evidence thread after the decision has been recorded.
-        if (submission.evidence_thread_id) {
-            try {
-                const evidenceThread = await interaction.guild.channels.fetch(
-                    submission.evidence_thread_id
-                );
-
-                if (evidenceThread) {
-                    await evidenceThread.delete('Trial submission review completed');
-                }
-
-            } catch (error) {
-                console.error('[Trial Review] Could not delete evidence thread:', error);
-
-                followUpIssues.push('The evidence thread could not be deleted.');
-
-                try {
-                    await sendTrialDiscrepancyAlert(interaction.client, {
-                        title: 'Trial Evidence Thread Cleanup Failed',
-                        description:
-                            `Trial submission #${submissionId} has been reviewed, ` +
-                            'but its evidence thread could not be deleted.',
-                        userId: submission.submitter_id,
-                        reason: 'Failed to delete the evidence thread after review.'
-                    });
-                } catch (alertError) {
-                    console.error(
-                        `[Trial Review] Could not send evidence cleanup alert for submission #${submissionId}:`,
-                        alertError
-                    );
-                }
-            }
-
-        }
-
         const decisionText = decision === 'approved'
             ? 'The Trial submission has been approved.'
             : 'The Trial submission has been rejected.';
@@ -1405,5 +1270,5 @@ module.exports = {
     handleTrialReviewInteraction,
     handleTrialMemberUpdate,
     publishTrialPanel,
-    createTrialEvidenceCollage
+
 };

@@ -8,6 +8,7 @@
     "deploy": "node deploy-commands.js"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "better-sqlite3": "^13.0.3",
     "discord.js": "^14.28.1",
     "dotenv": "^18.0.10",
