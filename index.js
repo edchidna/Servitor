@@ -1699,50 +1699,15 @@ async function processReportReaction(reaction, user) {
         `Space Marine 2 AAR System | ${decision.toUpperCase()} by <@${user.id}>`
     });
 
+
     // ----------------------------------------
-    // PRESERVE EVIDENCE IMAGES
+    // UPDATE REVIEW CARD AND PRESERVE EVIDENCE
     // ----------------------------------------
 
     try {
 
-      const collageImageUrl = reportEmbed.image?.url;
-
-      let collageFiles = [];
-
-      if (collageImageUrl) {
-
-        const collageFileName =
-          `${reportCategory.toLowerCase()}-evidence-collage.png`;
-
-        const collageResponse = await fetch(collageImageUrl);
-
-        if (!collageResponse.ok) {
-          throw new Error(
-            `Could not retrieve collage: HTTP ${collageResponse.status}`
-          );
-        }
-
-        const collageBuffer = Buffer.from(
-          await collageResponse.arrayBuffer()
-        );
-
-        const collageFile = new AttachmentBuilder(
-          collageBuffer,
-          {
-            name: collageFileName
-          }
-        );
-
-        updatedEmbed.setImage(
-          `attachment://${collageFileName}`
-        );
-
-        collageFiles.push(collageFile);
-      }
-
       await message.edit({
-        embeds: [updatedEmbed],
-        files: collageFiles
+        embeds: [updatedEmbed]
       });
 
     } catch (editError) {
@@ -1752,48 +1717,8 @@ async function processReportReaction(reaction, user) {
         editError
       );
 
-    } finally {
-
-      // ----------------------------------------
-      // DELETE ORIGINAL EVIDENCE THREAD
-      // ----------------------------------------
-
-      if (report.evidence_thread_id) {
-
-        try {
-
-          const evidenceThread = await client.channels.fetch(
-            report.evidence_thread_id
-          );
-
-          if (evidenceThread && evidenceThread.isThread()) {
-
-            await evidenceThread.delete(
-              `Report #${reportId} ${decision}; original evidence cleanup`
-            );
-
-            console.log(
-              `Evidence thread deleted for report #${reportId}.`
-            );
-
-          } else {
-
-            console.error(
-              `Evidence thread not found for report #${reportId}.`
-            );
-
-          }
-
-        } catch (threadError) {
-
-          console.error(
-            `Could not delete evidence thread for report #${reportId}:`,
-            threadError
-          );
-
-        }
-      }
     }
+
 
 
     // ----------------------------------------
@@ -2301,91 +2226,25 @@ async function processOrdealReaction(reaction, user) {
 
     try {
 
-      // --------------------------------------
-      // PRESERVE COLLAGE AND EVIDENCE PREVIEWS
-      // --------------------------------------
+  const evidenceEmbeds = message.embeds
+    .slice(1)
+    .map(embed => EmbedBuilder.from(embed));
 
-      const collageImageUrl = reviewEmbed.image?.url;
-      const collageFiles = [];
+  await message.edit({
+    embeds: [
+      updatedEmbed,
+      ...evidenceEmbeds
+    ]
+  });
 
-      if (collageImageUrl) {
+} catch (editError) {
 
-        const collageResponse = await fetch(collageImageUrl);
+  console.error(
+    `Could not update review card for Ordeal #${submissionId}. The database decision is already saved:`,
+    editError
+  );
 
-        if (!collageResponse.ok) {
-          throw new Error(
-            `Could not retrieve Ordeal collage: HTTP ${collageResponse.status}`
-          );
-        }
-
-        const collageBuffer = Buffer.from(
-          await collageResponse.arrayBuffer()
-        );
-
-        const collageFile = new AttachmentBuilder(
-          collageBuffer,
-          {
-            name: 'ordeal-evidence-collage.png'
-          }
-        );
-
-        updatedEmbed.setImage(
-          'attachment://ordeal-evidence-collage.png'
-        );
-
-        collageFiles.push(collageFile);
-      }
-
-      const evidenceEmbeds = message.embeds
-        .slice(1)
-        .map(embed => EmbedBuilder.from(embed));
-
-      await message.edit({
-        embeds: [
-          updatedEmbed,
-          ...evidenceEmbeds
-        ],
-        files: collageFiles
-      });
-
-    } finally {
-
-      if (submission.evidence_thread_id) {
-
-        try {
-
-          const evidenceThread = await client.channels.fetch(
-            submission.evidence_thread_id
-          );
-
-          if (evidenceThread && evidenceThread.isThread()) {
-
-            await evidenceThread.delete(
-              `Ordeal #${submissionId} ${decision}; original evidence cleanup`
-            );
-
-            console.log(
-              `Evidence thread deleted for Ordeal #${submissionId}.`
-            );
-
-          } else {
-
-            console.error(
-              `Evidence thread not found for Ordeal #${submissionId}.`
-            );
-
-          }
-
-        } catch (threadError) {
-
-          console.error(
-            `Could not delete evidence thread for Ordeal #${submissionId}:`,
-            threadError
-          );
-
-        }
-      }
-    }
+}
 
     await message.reactions.removeAll().catch(console.error);
 
@@ -4473,9 +4332,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       let submissionId = null;
       let reviewChannel = null;
       let reviewMessage = null;
-      let evidenceThread = null;
       let reviewMessageCreationAttempted = false;
-      let evidenceThreadCreationAttempted = false;
       let submissionFinalized = false;
 
       try {
@@ -4560,7 +4417,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 
         const permanentFiles = [];
-        const originalEvidenceFiles = [];
 
         for (const file of uploadedFiles.values()) {
 
@@ -4574,10 +4430,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await response.arrayBuffer()
           );
 
-          originalEvidenceFiles.push({
-            name: file.name,
-            buffer
-          });
 
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
@@ -4585,33 +4437,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             })
           );
         }
-
-        let collageFile = null;
-        let collageStatus;
-
-        try {
-          const collageBuffer = await createEvidenceCollage(
-            originalEvidenceFiles
-          );
-
-          if (collageBuffer) {
-            collageFile = new AttachmentBuilder(collageBuffer, {
-              name: 'ordeal-evidence-collage.png'
-            });
-            collageStatus = 'Created and attached to the review message.';
-          } else {
-            collageStatus =
-              'No supported image files; original uploads are kept in the evidence thread.';
-          }
-        } catch (collageError) {
-          console.error(
-            `Could not create Ordeal evidence collage for submission #${submissionId}:`,
-            collageError
-          );
-          collageStatus =
-            'Collage generation failed; original uploads are kept in the evidence thread.';
-        }
-
 
 
         // ----------------------------------
@@ -4706,11 +4531,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
               inline: true
             },
             {
-              name: 'Evidence Collage',
-              value: collageStatus,
-              inline: false
-            },
-            {
               name: 'Status',
               value: 'PENDING APPROVAL',
               inline: true
@@ -4721,114 +4541,56 @@ client.on(Events.InteractionCreate, async (interaction) => {
           })
           .setTimestamp();
 
-        if (collageFile) {
-          reviewEmbed.setImage(
-            'attachment://ordeal-evidence-collage.png'
-          );
-        }
 
-        // ----------------------------------
-        // SEND TO ORDEAL REVIEW CHANNEL
-        // ----------------------------------
+    // ----------------------------------
+    // SEND TO ORDEAL REVIEW CHANNEL
+    // ----------------------------------
 
-        reviewMessageCreationAttempted = true;
-        reviewMessage = await reviewChannel.send({
-          content: `👤 <@${interaction.user.id}>`,
-          embeds: [reviewEmbed],
-          files: collageFile ? [collageFile] : [],
-          allowedMentions: {
-            parse: []
-          }
-        });
+reviewMessageCreationAttempted = true;
+reviewMessage = await reviewChannel.send({
+  content: `👤 <@${interaction.user.id}>`,
+  embeds: [reviewEmbed],
+  files: permanentFiles,
+  allowedMentions: {
+    parse: []
+  }
+});
 
-        db.prepare(`
-      UPDATE ordeal_submissions
-      SET review_message_id = ?
-      WHERE id = ?
-        AND status = 'pending'
-    `).run(
-          reviewMessage.id,
-          submissionId
-        );
+db.prepare(`
+  UPDATE ordeal_submissions
+  SET review_message_id = ?
+  WHERE id = ?
+    AND status = 'pending'
+`).run(
+  reviewMessage.id,
+  submissionId
+);
 
-        // ----------------------------------
-        // CREATE THREAD FOR ORIGINAL EVIDENCE
-        // ----------------------------------
 
-        let originalEvidenceLinks = [];
-        let evidenceThreadId = null;
+// ----------------------------------
+// SAVE EVIDENCE AND REVIEW MESSAGE
+// ----------------------------------
 
-        if (permanentFiles.length > 0) {
+const evidence = reviewMessage.attachments.map(file => ({
+  id: file.id,
+  name: file.name,
+  url: file.url,
+  size: file.size,
+  contentType: file.contentType,
+  type: 'original'
+}));
 
-          evidenceThreadCreationAttempted = true;
-          evidenceThread = await reviewMessage.startThread({
-            name: `Original Evidence - ${ordeal.name} #${submissionId}`,
-            autoArchiveDuration: 1440,
-            reason: `Store original ${ordeal.name} evidence files`
-          });
-
-          evidenceThreadId = evidenceThread.id;
-
-          db.prepare(`
-        UPDATE ordeal_submissions
-        SET evidence_thread_id = ?
-        WHERE id = ?
-          AND status = 'pending'
-      `).run(
-            evidenceThreadId,
-            submissionId
-          );
-
-          for (const file of permanentFiles) {
-
-            const evidenceMessage = await evidenceThread.send({
-              files: [file]
-            });
-
-            const uploadedFile = evidenceMessage.attachments.first();
-
-            if (uploadedFile) {
-              originalEvidenceLinks.push({
-                name: uploadedFile.name,
-                url: evidenceMessage.url
-              });
-            }
-          }
-        }
-
-        // ----------------------------------
-        // SAVE EVIDENCE AND REVIEW MESSAGE
-        // ----------------------------------
-
-        const evidence = [];
-
-        for (const link of originalEvidenceLinks) {
-          evidence.push({
-            name: link.name,
-            url: link.url,
-            type: 'original'
-          });
-        }
-
-        for (const file of reviewMessage.attachments.values()) {
-          evidence.push({
-            id: file.id,
-            name: file.name,
-            url: file.url,
-            size: file.size,
-            contentType: file.contentType,
-            type: 'collage'
-          });
-        }
-
-        db.prepare(`
-      UPDATE ordeal_submissions
-      SET evidence = ?
-      WHERE id = ?
-    `).run(
-          JSON.stringify(evidence),
-          submissionId
-        );
+db.prepare(`
+  UPDATE ordeal_submissions
+  SET
+    evidence = ?,
+    evidence_thread_id = NULL
+  WHERE id = ?
+    AND status = 'pending'
+`).run(
+  JSON.stringify(evidence),
+  submissionId
+);
 
 
         // ----------------------------------
@@ -5090,39 +4852,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
           }
 
-          if (
-            !evidenceThread &&
-            evidenceThreadCreationAttempted &&
-            reviewChannel &&
-            submissionId !== null
-          ) {
-            try {
-              const activeThreads = await reviewChannel.threads.fetchActive();
-              const threadName =
-                `Original Evidence - ${ordeal.name} #${submissionId}`;
-              evidenceThread = activeThreads.threads.find(
-                thread => thread.name === threadName
-              ) || null;
-            } catch (cleanupError) {
-              console.error(
-                `Could not locate a partially created evidence thread for Ordeal #${submissionId}:`,
-                cleanupError
-              );
-            }
-          }
-
-          if (evidenceThread) {
-            try {
-              await evidenceThread.delete(
-                'Incomplete Ordeal submission cleanup'
-              );
-            } catch (cleanupError) {
-              console.error(
-                `Could not delete incomplete evidence thread for Ordeal #${submissionId}:`,
-                cleanupError
-              );
-            }
-          }
 
           if (reviewMessage) {
             try {
@@ -5404,8 +5133,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // DOWNLOAD EVIDENCE FILES
         // ----------------------------------
 
+
         const permanentFiles = [];
-        const originalEvidenceFiles = [];
 
         for (const file of uploadedFiles.values()) {
 
@@ -5419,11 +5148,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await response.arrayBuffer()
           );
 
-          originalEvidenceFiles.push({
-            name: file.name,
-            buffer
-          });
-
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
               name: file.name
@@ -5431,19 +5155,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
         }
 
-        // ----------------------------------
-        // CREATE EVIDENCE COLLAGE
-        // ----------------------------------
-
-        const collageBuffer = await createEvidenceCollage(
-          originalEvidenceFiles
-        );
-
-        const collageFile = collageBuffer
-          ? new AttachmentBuilder(collageBuffer, {
-            name: 'operations-evidence-collage.png'
-          })
-          : null;
 
 
         // ----------------------------------
@@ -5511,21 +5222,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setTimestamp();
 
 
-
         // ----------------------------------
-        // SEND REPORT AND EVIDENCE TOGETHER
+        // SEND REPORT WITH ORIGINAL EVIDENCE
         // ----------------------------------
-
-        if (collageFile) {
-          reviewEmbed.setImage(
-            'attachment://operations-evidence-collage.png'
-          );
-        }
 
         reviewMessage = await reviewChannel.send({
           content: `👤 <@${interaction.user.id}>`,
           embeds: [reviewEmbed],
-          files: collageFile ? [collageFile] : [],
+          files: permanentFiles,
           allowedMentions: {
             parse: []
           }
@@ -5583,43 +5287,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 
         // ----------------------------------
-        // SAVE PERMANENT EVIDENCE LINKS
+        // SAVE ORIGINAL EVIDENCE METADATA
         // ----------------------------------
 
-        const evidence = [];
-
-        // Save original evidence files from the thread.
-        for (const link of originalEvidenceLinks) {
-
-          evidence.push({
-            name: link.name,
-            url: link.url,
-            type: 'original'
-          });
-        }
-
-        // Save the collage attachment from the main report.
-        for (const file of reviewMessage.attachments.values()) {
-
-          evidence.push({
-            id: file.id,
-            name: file.name,
-            url: file.url,
-            size: file.size,
-            contentType: file.contentType,
-            type: 'collage'
-          });
-        }
+        const evidence = reviewMessage.attachments.map(file => ({
+          id: file.id,
+          name: file.name,
+          url: file.url,
+          size: file.size,
+          contentType: file.contentType,
+          type: 'original'
+        }));
 
         db.prepare(`
           UPDATE reports
           SET evidence = ?,
-          evidence_thread_id = ?
-         WHERE id = ?
-          AND status = 'pending'
-             `).run(
+              evidence_thread_id = NULL
+          WHERE id = ?
+            AND status = 'pending'
+        `).run(
           JSON.stringify(evidence),
-          evidenceThreadId,
           reportId
         );
 
@@ -5841,7 +5528,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // ----------------------------------
 
         const permanentFiles = [];
-        const originalEvidenceFiles = [];
 
         for (const file of uploadedFiles.values()) {
 
@@ -5855,11 +5541,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await response.arrayBuffer()
           );
 
-          originalEvidenceFiles.push({
-            name: file.name,
-            buffer
-          });
-
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
               name: file.name
@@ -5870,16 +5551,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // ----------------------------------
         // CREATE EVIDENCE COLLAGE
         // ----------------------------------
-
-        const collageBuffer = await createEvidenceCollage(
-          originalEvidenceFiles
-        );
-
-        const collageFile = collageBuffer
-          ? new AttachmentBuilder(collageBuffer, {
-            name: 'stratagems-evidence-collage.png'
-          })
-          : null;
 
         const squadNames = [...participants].map(userId =>
           `<@${userId}>`
@@ -5936,104 +5607,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
           })
           .setTimestamp();
 
-        if (collageFile) {
-          reviewEmbed.setImage(
-            'attachment://stratagems-evidence-collage.png'
-          );
-        }
 
         const reviewMessage = await reviewChannel.send({
           content: `👤 <@${interaction.user.id}>`,
           embeds: [reviewEmbed],
-          files: collageFile ? [collageFile] : [],
+          files: permanentFiles,
           allowedMentions: {
             parse: []
           }
         });
 
-        // ----------------------------------
-        // CREATE THREAD FOR ORIGINAL EVIDENCE
-        // ----------------------------------
 
-        let originalEvidenceLinks = [];
-        let evidenceThreadId = null;
-
-        if (permanentFiles.length > 0) {
-
-          const evidenceThread = await reviewMessage.startThread({
-            name: `Original Evidence - Stratagems Report #${reportId}`,
-            autoArchiveDuration: 1440,
-            reason: 'Store original Stratagems AAR evidence files'
-          });
-
-          evidenceThreadId = evidenceThread.id;
-          await db.prepare(`
-            UPDATE reports
-            SET evidence_thread_id = ?
-            WHERE id = ?
-             AND status = 'pending'
-         `).run(
-            evidenceThreadId,
-            reportId
-          );
-
-          for (const file of permanentFiles) {
-
-            const evidenceMessage = await evidenceThread.send({
-              files: [file]
-            });
-
-            const uploadedFile = evidenceMessage.attachments.first();
-
-            if (uploadedFile) {
-              originalEvidenceLinks.push({
-                name: uploadedFile.name,
-                url: evidenceMessage.url
-              });
-            }
-          }
-        }
-
-        await reviewMessage.react('✅');
-        await reviewMessage.react('❌');
 
         // ----------------------------------
-        // SAVE PERMANENT EVIDENCE LINKS
+        // SAVE ORIGINAL EVIDENCE METADATA
         // ----------------------------------
 
-        const evidence = [];
-
-        for (const link of originalEvidenceLinks) {
-          evidence.push({
-            name: link.name,
-            url: link.url,
-            type: 'original'
-          });
-        }
-
-        for (const file of reviewMessage.attachments.values()) {
-          evidence.push({
-            id: file.id,
-            name: file.name,
-            url: file.url,
-            size: file.size,
-            contentType: file.contentType,
-            type: 'collage'
-          });
-        }
+        const evidence = reviewMessage.attachments.map(file => ({
+          id: file.id,
+          name: file.name,
+          url: file.url,
+          size: file.size,
+          contentType: file.contentType,
+          type: 'original'
+        }));
 
         db.prepare(`
           UPDATE reports
           SET
             evidence = ?,
-            evidence_thread_id = ?
+            evidence_thread_id = NULL
           WHERE id = ?
             AND status = 'pending'
         `).run(
           JSON.stringify(evidence),
-          evidenceThreadId,
           reportId
         );
+
+
+        await reviewMessage.react('✅');
+        await reviewMessage.react('❌');
 
         await interaction.editReply({
           content: 'Stratagems report submitted successfully.'
@@ -6214,8 +5827,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           throw new Error('AAR review channel is unavailable.');
         }
 
+
         const permanentFiles = [];
-        const originalEvidenceFiles = [];
 
         for (const file of uploadedFiles.values()) {
 
@@ -6229,11 +5842,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await response.arrayBuffer()
           );
 
-          originalEvidenceFiles.push({
-            name: file.name,
-            buffer
-          });
-
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
               name: file.name
@@ -6241,15 +5849,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
         }
 
-        const collageBuffer = await createEvidenceCollage(
-          originalEvidenceFiles
-        );
-
-        const collageFile = collageBuffer
-          ? new AttachmentBuilder(collageBuffer, {
-            name: 'pvp-evidence-collage.png'
-          })
-          : null;
 
         const squadNames = [...participants].map(userId =>
           `<@${userId}>`
@@ -6297,96 +5896,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
           })
           .setTimestamp();
 
-        if (collageFile) {
-          reviewEmbed.setImage(
-            'attachment://pvp-evidence-collage.png'
-          );
-        }
 
         const reviewMessage = await reviewChannel.send({
           content: `👤 <@${interaction.user.id}>`,
           embeds: [reviewEmbed],
-          files: collageFile ? [collageFile] : [],
+          files: permanentFiles,
           allowedMentions: {
             parse: []
           }
         });
 
-        let originalEvidenceLinks = [];
-        let evidenceThreadId = null;
-
-        if (permanentFiles.length > 0) {
-
-          const evidenceThread = await reviewMessage.startThread({
-            name: `Original Evidence - PVP Report #${reportId}`,
-            autoArchiveDuration: 1440,
-            reason: 'Store original PVP AAR evidence files'
-          });
-
-          evidenceThreadId = evidenceThread.id;
-          await db.prepare(`
-           UPDATE reports
-           SET evidence_thread_id = ?
-           WHERE id = ?
-            AND status = 'pending'
-          `).run(
-            evidenceThreadId,
-            reportId
-          );
-
-          for (const file of permanentFiles) {
-
-            const evidenceMessage = await evidenceThread.send({
-              files: [file]
-            });
-
-            const uploadedFile = evidenceMessage.attachments.first();
-
-            if (uploadedFile) {
-              originalEvidenceLinks.push({
-                name: uploadedFile.name,
-                url: evidenceMessage.url
-              });
-            }
-          }
-        }
 
         await reviewMessage.react('✅');
         await reviewMessage.react('❌');
 
-        const evidence = [];
 
-        for (const link of originalEvidenceLinks) {
-          evidence.push({
-            name: link.name,
-            url: link.url,
-            type: 'original'
-          });
-        }
+        // ----------------------------------
+        // SAVE ORIGINAL EVIDENCE METADATA
+        // ----------------------------------
 
-        for (const file of reviewMessage.attachments.values()) {
-          evidence.push({
-            id: file.id,
-            name: file.name,
-            url: file.url,
-            size: file.size,
-            contentType: file.contentType,
-            type: 'collage'
-          });
-        }
+        const evidence = reviewMessage.attachments.map(file => ({
+          id: file.id,
+          name: file.name,
+          url: file.url,
+          size: file.size,
+          contentType: file.contentType,
+          type: 'original'
+        }));
 
         db.prepare(`
           UPDATE reports
           SET
             evidence = ?,
-            evidence_thread_id = ?
+            evidence_thread_id = NULL
           WHERE id = ?
             AND status = 'pending'
         `).run(
           JSON.stringify(evidence),
-          evidenceThreadId,
           reportId
         );
+
 
         await interaction.editReply({
           content: 'PVP report submitted successfully.'
@@ -6612,8 +6161,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // DOWNLOAD EVIDENCE FILES
         // ----------------------------------
 
+
         const permanentFiles = [];
-        const originalEvidenceFiles = [];
 
         for (const file of uploadedFiles.values()) {
 
@@ -6627,11 +6176,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await response.arrayBuffer()
           );
 
-          originalEvidenceFiles.push({
-            name: file.name,
-            buffer
-          });
-
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
               name: file.name
@@ -6639,23 +6183,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
         }
 
-        // ----------------------------------
-        // CREATE EVIDENCE COLLAGE
-        // ----------------------------------
-
-        const collageBuffer = await createEvidenceCollage(
-          originalEvidenceFiles
-        );
-
-        const collageFile = collageBuffer
-          ? new AttachmentBuilder(collageBuffer, {
-            name: 'siege-evidence-collage.png'
-          })
-          : null;
-
-        const squadNames = [...participants].map(userId =>
-          `<@${userId}>`
-        );
 
         // ----------------------------------
         // CREATE REVIEW EMBED
@@ -6718,104 +6245,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
           })
           .setTimestamp();
 
-        if (collageFile) {
-          reviewEmbed.setImage(
-            'attachment://siege-evidence-collage.png'
-          );
-        }
 
         const reviewMessage = await reviewChannel.send({
           content: `👤 <@${interaction.user.id}>`,
           embeds: [reviewEmbed],
-          files: collageFile ? [collageFile] : [],
+          files: permanentFiles,
           allowedMentions: {
             parse: []
           }
         });
 
-        // ----------------------------------
-        // CREATE THREAD FOR ORIGINAL EVIDENCE
-        // ----------------------------------
-
-        let originalEvidenceLinks = [];
-        let evidenceThreadId = null;
-
-        if (permanentFiles.length > 0) {
-
-          const evidenceThread = await reviewMessage.startThread({
-            name: `Original Evidence - Siege Report #${reportId}`,
-            autoArchiveDuration: 1440,
-            reason: 'Store original Siege AAR evidence files'
-          });
-
-          evidenceThreadId = evidenceThread.id;
-          await db.prepare(`
-           UPDATE reports
-           SET evidence_thread_id = ?
-           WHERE id = ?
-            AND status = 'pending'
-          `).run(
-            evidenceThreadId,
-            reportId
-          );
-
-          for (const file of permanentFiles) {
-
-            const evidenceMessage = await evidenceThread.send({
-              files: [file]
-            });
-
-            const uploadedFile = evidenceMessage.attachments.first();
-
-            if (uploadedFile) {
-              originalEvidenceLinks.push({
-                name: uploadedFile.name,
-                url: evidenceMessage.url
-              });
-            }
-          }
-        }
-
-        await reviewMessage.react('✅');
-        await reviewMessage.react('❌');
 
         // ----------------------------------
-        // SAVE PERMANENT EVIDENCE LINKS
+        // SAVE ORIGINAL EVIDENCE METADATA
         // ----------------------------------
 
-        const evidence = [];
-
-        for (const link of originalEvidenceLinks) {
-          evidence.push({
-            name: link.name,
-            url: link.url,
-            type: 'original'
-          });
-        }
-
-        for (const file of reviewMessage.attachments.values()) {
-          evidence.push({
-            id: file.id,
-            name: file.name,
-            url: file.url,
-            size: file.size,
-            contentType: file.contentType,
-            type: 'collage'
-          });
-        }
+        const evidence = reviewMessage.attachments.map(file => ({
+          id: file.id,
+          name: file.name,
+          url: file.url,
+          size: file.size,
+          contentType: file.contentType,
+          type: 'original'
+        }));
 
         db.prepare(`
           UPDATE reports
           SET
             evidence = ?,
-            evidence_thread_id = ?
+            evidence_thread_id = NULL
           WHERE id = ?
             AND status = 'pending'
         `).run(
           JSON.stringify(evidence),
-          evidenceThreadId,
           reportId
         );
+
+
+        await reviewMessage.react('✅');
+        await reviewMessage.react('❌');
+
 
         await interaction.editReply({
           content: 'Siege report submitted successfully.'
