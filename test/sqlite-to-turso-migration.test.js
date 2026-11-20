@@ -12,6 +12,8 @@ const {
   verifyTransferredTable,
   TABLES_IN_INSERT_ORDER
 } = require('../migrate-sqlite-to-turso');
+const { jsonSafe } = require('../backup-database');
+const { decodeBackupValue } = require('../restore-database');
 
 function createLegacySchema(source) {
   const root = path.join(__dirname, '..');
@@ -359,5 +361,29 @@ test('SQLite migration refuses a populated target before importing any tables', 
     if (source.open) source.close();
     if (targetSeed.open) targetSeed.close();
     fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+
+test('logical backup preserves Buffer and Uint8Array BLOB bytes', () => {
+  const backing = Uint8Array.from([99, 10, 20, 30, 88]);
+  const slicedView = new Uint8Array(backing.buffer, 1, 3);
+  const encoded = jsonSafe({
+    nodeBuffer: Buffer.from([1, 2, 3]),
+    libsqlView: slicedView,
+    arrayBuffer: Uint8Array.from([7, 8]).buffer
+  });
+
+  assert.deepEqual(encoded.nodeBuffer, { type: 'Buffer', data: [1, 2, 3] });
+  assert.deepEqual(encoded.libsqlView, { type: 'Buffer', data: [10, 20, 30] });
+  assert.deepEqual(encoded.arrayBuffer, { type: 'Buffer', data: [7, 8] });
+
+  for (const [key, expected] of [
+    ['nodeBuffer', [1, 2, 3]],
+    ['libsqlView', [10, 20, 30]],
+    ['arrayBuffer', [7, 8]]
+  ]) {
+    const decoded = decodeBackupValue(encoded[key], { type: 'BLOB', name: key });
+    assert.deepEqual(Array.from(decoded), expected);
   }
 });
