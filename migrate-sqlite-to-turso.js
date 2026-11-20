@@ -188,14 +188,25 @@ async function main() {
       );
     }
 
+    const defaultHonorIcons = [
+      'assets/honors/Conversion ward.png',
+      'assets/honors/Crux Terminatus.png',
+      'assets/honors/Fang Necklace.png',
+      'assets/honors/Gem.png',
+      'assets/honors/Rune.png',
+      null, null, null, null, null
+    ];
     const targetHonorResult = await target.execute(
-      'SELECT honor_id FROM honors ORDER BY honor_id'
+      'SELECT honor_id, display_name, display_order, icon_path FROM honors ORDER BY display_order'
     );
-    const targetHonorIds = targetHonorResult.rows.map(row => row.honor_id);
-    if (
-      targetHonorIds.length !== seededHonorIds.length ||
-      seededHonorIds.some(id => !targetHonorIds.includes(id))
-    ) {
+    const targetHonorsAreCleanSeed = targetHonorResult.rows.length === seededHonorIds.length &&
+      targetHonorResult.rows.every((row, index) =>
+        row.honor_id === seededHonorIds[index] &&
+        row.display_name === `Honor ${index + 1}` &&
+        Number(row.display_order) === index + 1 &&
+        (row.icon_path ?? null) === defaultHonorIcons[index]
+      );
+    if (!targetHonorsAreCleanSeed) {
       throw new Error(
         'Target honors table is not in its expected clean seeded state. Refusing to merge data.'
       );
