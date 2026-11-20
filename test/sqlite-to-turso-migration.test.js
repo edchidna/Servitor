@@ -221,6 +221,64 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
       migratedHonor.rows[0],
       { display_name: 'Veteran Honor', icon_path: 'assets/honors/legacy-1.png' }
     );
+
+    targetClient.close();
+    targetClient = null;
+
+    const backupDirectory = path.join(directory, 'backups');
+    const backupRun = spawnSync(
+      process.execPath,
+      [path.join(__dirname, '..', 'backup-database.js')],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          TURSO_DATABASE_URL: `file:${targetPath}`,
+          TURSO_AUTH_TOKEN: '',
+          BACKUP_OUTPUT_DIR: backupDirectory
+        }
+      }
+    );
+    assert.equal(
+      backupRun.status,
+      0,
+      `Backup process failed.\nSTDOUT:\n${backupRun.stdout}\nSTDERR:\n${backupRun.stderr}`
+    );
+
+    const backupFilename = fs.readdirSync(backupDirectory).find(name => name.endsWith('.json'));
+    assert.ok(backupFilename, 'Backup JSON file should be created.');
+    const backupFilePath = path.join(backupDirectory, backupFilename);
+    const backupJson = JSON.parse(fs.readFileSync(backupFilePath, 'utf8'));
+    assert.equal(backupJson.format, 'servitor-turso-logical-backup');
+
+    const restoredPath = path.join(directory, 'restored-target.db');
+    const restoreRun = spawnSync(
+      process.execPath,
+      [path.join(__dirname, '..', 'restore-database.js'), backupFilePath],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          TURSO_DATABASE_URL: `file:${restoredPath}`,
+          TURSO_AUTH_TOKEN: '',
+          BACKUP_FILE: backupFilePath
+        }
+      }
+    );
+    assert.equal(
+      restoreRun.status,
+      0,
+      `Restore process failed.\nSTDOUT:\n${restoreRun.stdout}\nSTDERR:\n${restoreRun.stderr}`
+    );
+
+    const restoredClient = createClient({ url: `file:${restoredPath}` });
+    try {
+      for (const table of TABLES_IN_INSERT_ORDER) {
+        await verifyTransferredTable(source, restoredClient, table);
+      }
+    } finally {
+      restoredClient.close();
+    }
   } finally {
     if (targetClient) targetClient.close();
     source.close();
