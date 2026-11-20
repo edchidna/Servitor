@@ -380,7 +380,7 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
 - The local persistence suite contains twelve tests covering full SQLite-to-libSQL transfer, refusal of populated targets, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, and logical backup/restore round-trip verification. CI also runs the Operations modal workflow regression test.
 - If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
-- Latest verified code test run: GitHub Actions run #68, commit `4f325745323a3104604767513e3d7b479bedac86`; dependency installation, syntax validation, the local persistence suite, the Operations modal regression test, and dependency audit passed (zero vulnerabilities). Remote Turso persistence and foreign-key tests were skipped because the dedicated test-database secrets were not configured. This is not a validation result for the current branch head: the later commit `15268ddeab82bf178809b68880d672de318077eb` only changed migration documentation, and its CI status has not been confirmed.
+- Latest known successful code test run: GitHub Actions run #68, commit `4f325745323a3104604767513e3d7b479bedac86`; dependency installation, syntax validation, the local persistence suite, the Operations modal regression test, and dependency audit passed (zero vulnerabilities). Remote Turso persistence and foreign-key tests were skipped because the dedicated test-database secrets were not configured. This run predates the current branch head and does not validate the latest commits. The current head's CI result remains unconfirmed.
 
 ## Foreign-key compatibility risk
 
@@ -440,3 +440,13 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - This is a logical JSON restore, not a byte-for-byte database image. Keep the original SQLite backup and the logical backup off-host until remote recovery rehearsal is complete.
 - Remote recovery remains unverified until the same procedure passes against a separate disposable remote Turso database.
 
+
+
+## Hosting runtime audit (2026-11-21)
+
+A static review of the current startup/runtime code found two hosting-readiness items that need to be resolved before deployment:
+
+- `keep_alive.js` starts an HTTP server on a hard-coded port `8080`. It does not read the hosting platform's injected `PORT` environment variable. Whether this works depends on the selected host's port configuration; it should be made configurable and tested against the chosen provider.
+- `index.js` does not register `SIGINT` or `SIGTERM` shutdown handlers. It closes the Turso client when startup fails, but a normal host stop does not currently explicitly destroy the Discord client and close the database through an application shutdown path. The two recurring `setInterval` jobs are also not retained for cleanup.
+
+These are static findings, not observed runtime failures. Before choosing or configuring a host, add and test a graceful shutdown path, make the health-check listener use the provider's expected port, and verify restart/reconnect behavior. Do not assume the existing HTTP keep-alive endpoint alone makes the bot production-ready.
