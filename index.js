@@ -4946,21 +4946,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // CHECK PREVIOUS SUBMISSIONS
       // ----------------------------------
 
-      const previousRows = db.prepare(`
-    SELECT
-      id,
-      challenge_name,
-      game_mode,
-      difficulty,
-      challenge_completers,
-      participants,
-      operation_name,
-      review_message_id
-      FROM ordeal_submissions
-      WHERE challenge_key = ?
-      AND status IN ('pending', 'approved')
-    ORDER BY id DESC
-  `).all(ordeal.key);
+      const previousRows = await ordealDatabase.getPreviousSubmissions(ordeal.key);
 
       let suspiciousMatch = null;
 
@@ -5087,52 +5073,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // SAVE COMPLETE SUBMISSION
         // ----------------------------------
 
-        const saveSubmission = db.transaction(() => {
-
-          const result = db.prepare(`
-        INSERT INTO ordeal_submissions (
-          submitter_id,
-          challenge_key,
-          challenge_name,
-          game_mode,
+        submissionId = await ordealDatabase.createSubmission({
+          submitterId: interaction.user.id,
+          challengeKey: ordeal.key,
+          challengeName: ordeal.name,
+          gameMode,
           difficulty,
-          reward_role_id,
-          operation_name,
-          challenge_completers,
+          rewardRoleId: ordeal.rewardRoleId,
+          operationName,
+          completers: completerIds,
           participants,
-          gene_seed,
-          armoury_data,
-          base_points,
-          bonus_points,
-          total_points,
-          suspicious_flag,
-          suspicious_details,
-          status
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-      `).run(
-            interaction.user.id,
-            ordeal.key,
-            ordeal.name,
-            gameMode,
-            difficulty,
-            ordeal.rewardRoleId,
-            operationName,
-            JSON.stringify(completerIds),
-            JSON.stringify(participants),
-            geneSeed,
-            armouryData,
-            0,
-            0,
-            0,
-            suspiciousFlag,
-            JSON.stringify(suspiciousDetails)
-          );
-
-          return Number(result.lastInsertRowid);
+          geneSeed,
+          armouryData,
+          suspiciousFlag,
+          suspiciousDetails
         });
-
-        submissionId = saveSubmission();
 
         // ----------------------------------
         // DOWNLOAD EVIDENCE FILES
@@ -5217,15 +5172,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             parse: []
           }
         });
-db.prepare(`
-  UPDATE ordeal_submissions
-  SET review_message_id = ?
-  WHERE id = ?
-    AND status = 'pending'
-`).run(
-          reviewMessage.id,
-          submissionId
-        );
+await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
 
         // ----------------------------------
@@ -5265,17 +5212,7 @@ db.prepare(`
             type: 'original'
           };
         });
-        db.prepare(`
-  UPDATE ordeal_submissions
-  SET
-    evidence = ?,
-    evidence_thread_id = NULL
-  WHERE id = ?
-    AND status = 'pending'
-`).run(
-          JSON.stringify(evidence),
-          submissionId
-        );
+        await ordealDatabase.saveEvidence(submissionId, evidence);
 
 
         // ----------------------------------
@@ -5315,13 +5252,9 @@ db.prepare(`
           try {
 
             // Check whether an alert was already recorded.
-            const existingAlert = db.prepare(`
-          SELECT nco_alert_message_id
-          FROM ordeal_submissions
-          WHERE id = ?
-        `).get(submissionId);
+            const existingAlertMessageId = await ordealDatabase.getNcoAlertMessageId(submissionId);
 
-            if (!existingAlert?.nco_alert_message_id) {
+            if (!existingAlertMessageId) {
 
               const ncoChannel = await client.channels.fetch(
                 process.env.NCO_REVIEW_CHANNEL_ID
@@ -5467,15 +5400,7 @@ db.prepare(`
                 }
               });
 
-              db.prepare(`
-            UPDATE ordeal_submissions
-            SET nco_alert_message_id = ?
-            WHERE id = ?
-              AND nco_alert_message_id IS NULL
-          `).run(
-                alertMessage.id,
-                submissionId
-              );
+              await ordealDatabase.attachNcoAlertMessage(submissionId, alertMessage.id);
             }
 
           } catch (alertError) {
@@ -5553,11 +5478,7 @@ db.prepare(`
 
           if (submissionId !== null) {
             try {
-              db.prepare(`
-            DELETE FROM ordeal_submissions
-            WHERE id = ?
-              AND status = 'pending'
-          `).run(submissionId);
+              await ordealDatabase.deletePendingSubmission(submissionId);
             } catch (cleanupError) {
               console.error(
                 `Could not remove incomplete Ordeal database row #${submissionId}:`,
