@@ -453,3 +453,42 @@ test('SQLite migration verification compares columns and complete row content', 
     await database.execute(`DROP TABLE IF EXISTS ${table}`);
   }
 });
+
+test('database shutdown waits for an active transaction before closing the client', async () => {
+  let markStarted;
+  let releaseTransaction;
+  const started = new Promise(resolve => {
+    markStarted = resolve;
+  });
+  const holdTransaction = new Promise(resolve => {
+    releaseTransaction = resolve;
+  });
+
+  const transactionWork = database.withTransaction(async tx => {
+    await tx.execute('SELECT 1');
+    markStarted();
+    await holdTransaction;
+  });
+
+  await started;
+
+  let shutdownFinished = false;
+  const shutdown = database.closeDatabase().then(() => {
+    shutdownFinished = true;
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(
+    shutdownFinished,
+    false,
+    'Shutdown must wait while the transaction is still active.'
+  );
+
+  releaseTransaction();
+  await transactionWork;
+  await shutdown;
+  assert.equal(shutdownFinished, true);
+
+  // Reopen so the shared after-hook can perform its normal cleanup.
+  await database.initializeDatabase();
+});
