@@ -161,3 +161,36 @@ The Honor initialization transaction seeds ten default Honor rows with `INSERT O
 - Latest audit-only commit: `549f0631736b47c015136fa2830a3079389f7d13`.
 - No JavaScript source, package manifest, lockfile, database file, or deployment configuration has been changed.
 - The Turso branch remains intentionally non-deployable until the async service, schema migration, caller conversion, data transfer, and validation work are complete.
+
+
+## Implementation checkpoint: async database foundation
+
+The first two application-support files have now been added to `migration/turso`:
+
+- `turso-database.js`
+  - Creates one shared `@libsql/client` client from `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+  - Requires callers to await initialization before database access.
+  - Exposes parameterized `execute`, fixed `batch`, and interactive `withTransaction` helpers.
+  - Ensures dependent statements inside a transaction use the same transaction object, commits only after the callback succeeds, rolls back on failure, and closes the transaction.
+  - Does not log connection URLs or tokens.
+  - Supports a local `file:` URL for isolated development; remote connections require an auth token.
+- `core-database-schema.js`
+  - Adds versioned, asynchronous initialization for the core AAR, Ordeal, tenure, Ordeal ledger, and manual Saga adjustment tables.
+  - Preserves the legacy missing-column upgrades and the legacy Ordeal default normalization.
+  - Creates the indexes and constraints present in the current SQLite schema.
+  - Records migration version 1 only after the schema transaction completes.
+
+These files are foundation components only. Existing runtime modules still import and use `better-sqlite3`; they have not yet been switched over. `package.json` and `package-lock.json` remain unchanged, and the new files have not yet been runtime-tested against a real Turso database. The branch remains non-deployable.
+
+### Validation still required for this foundation
+
+- Install the pinned `@libsql/client` dependency and update the lockfile using npm, rather than hand-editing dependency resolution.
+- Verify the installed version's `createClient`, `execute`, `batch`, interactive transaction, `commit`, `rollback`, and `close` behavior against its actual package types.
+- Verify remote Turso support for the schema transaction, `PRAGMA table_info`, partial indexes, `AUTOINCREMENT`, and foreign-key enforcement.
+- Run the schema twice against an empty disposable database and once against a legacy-shaped database to prove idempotency and compatibility.
+- Add feature-schema initialization for Trial and Honor, then explicitly wire startup to await all schemas before enabling Discord event handlers.
+
+Latest foundation commits:
+- `25cd23ba3c2fe8e6fcd89a601ca8862fada4f97a` — shared async Turso database foundation.
+- `a14f41cafd0973c27af5504d442d24ba188ddcd7` — versioned core schema initializer.
+- `3b6772d4ce67c57aa3408ef6b77fb26f6e4b016d` — hardened rollback-error handling.
