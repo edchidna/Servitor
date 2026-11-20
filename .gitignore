@@ -16,10 +16,3 @@ node_modules/
 
 # Local backups
 *.bak
-# Patch snapshots and temporary inspection files
-*.before-*
-*.old
-*.backup
-*.tmp
-*.temp
-*.txt
