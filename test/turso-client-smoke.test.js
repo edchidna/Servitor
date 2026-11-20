@@ -166,3 +166,176 @@ test('failed AAR participant insertion rolls back the report and all participant
     Number(beforeCount.rows[0].count)
   );
 });
+
+
+const trialDatabase = require('../trial-database-turso');
+const ordealDatabase = require('../ordeal-database-turso');
+const sagaDatabase = require('../saga-database-turso');
+const honor = require('../honor');
+
+test('Trial approval preserves progression and Pack Member scoring rules', async () => {
+  const submissionId = await trialDatabase.createTrialSubmission({
+    submitterId: 'trial-smoke-submitter',
+    trialKey: 'trial_1',
+    evidence: [{ name: 'trial-proof.png' }],
+    completers: [
+      { user_id: 'trial-smoke-completer', unproven_role_at_submission: false }
+    ],
+    packMembers: [
+      { user_id: 'trial-smoke-pack', unproven_role_at_submission: false }
+    ]
+  });
+
+  const pending = await trialDatabase.getTrialSubmission(submissionId);
+  assert.equal(pending.status, 'pending');
+  assert.equal(pending.completers.length, 1);
+  assert.equal(pending.pack_members.length, 1);
+
+  const review = await trialDatabase.reviewTrialSubmission({
+    submissionId,
+    reviewerId: 'trial-smoke-moderator',
+    reviewerName: 'Smoke Moderator',
+    decision: 'approved',
+    packMemberRoleStatuses: { 'trial-smoke-pack': false }
+  });
+
+  assert.equal(review.decision, 'approved');
+  assert.equal(review.progressionAwards[0].awarded, true);
+  assert.equal(review.progressionAwards[0].completedTrialCount, 1);
+  assert.equal(review.pointsAwards[0].pointsAwarded, 2);
+
+  const progress = await trialDatabase.getMemberTrialProgress('trial-smoke-completer');
+  assert.deepEqual(progress.completedTrialKeys, ['trial_1']);
+  assert.equal(progress.graduated, false);
+
+  const score = await database.execute({
+    sql: 'SELECT points FROM trial_score_ledger WHERE submission_id = ?',
+    args: [submissionId]
+  });
+  assert.equal(Number(score.rows[0].points), 2);
+
+  await assert.rejects(
+    trialDatabase.reviewTrialSubmission({
+      submissionId,
+      reviewerId: 'trial-smoke-moderator',
+      reviewerName: 'Smoke Moderator',
+      decision: 'approved',
+      packMemberRoleStatuses: { 'trial-smoke-pack': false }
+    }),
+    /already been reviewed/i
+  );
+});
+
+test('Ordeal approval remains a separate zero-point challenge and records its audit', async () => {
+  const submissionId = await ordealDatabase.createSubmission({
+    submitterId: 'ordeal-smoke-submitter',
+    challengeKey: 'smoke_challenge',
+    challengeName: 'Smoke Challenge',
+    gameMode: 'Operations',
+    difficulty: 'Absolute',
+    rewardRoleId: 'smoke-role-id',
+    operationName: 'Smoke Operation',
+    completers: ['ordeal-smoke-submitter'],
+    participants: ['ordeal-smoke-submitter'],
+    geneSeed: 'Yes',
+    armouryData: 1,
+    suspiciousFlag: 0,
+    suspiciousDetails: []
+  });
+
+  await ordealDatabase.attachReviewMessage(submissionId, 'ordeal-smoke-review-message');
+  await ordealDatabase.saveEvidence(submissionId, [{ name: 'ordeal-proof.png' }]);
+  assert.equal(
+    (await ordealDatabase.getSubmissionByReviewMessage('ordeal-smoke-review-message')).id,
+    submissionId
+  );
+
+  const saved = await ordealDatabase.saveDecision(
+    submissionId,
+    'ordeal-smoke-moderator',
+    'approved'
+  );
+  assert.equal(saved, true);
+
+  const duplicate = await ordealDatabase.saveDecision(
+    submissionId,
+    'ordeal-smoke-moderator',
+    'approved'
+  );
+  assert.equal(duplicate, false);
+
+  const submission = await ordealDatabase.getSubmissionById(submissionId);
+  assert.equal(submission.status, 'approved');
+
+  const audit = await database.execute({
+    sql: 'SELECT moderator_id, decision FROM ordeal_audit_log WHERE submission_id = ?',
+    args: [submissionId]
+  });
+  assert.equal(audit.rows[0].moderator_id, 'ordeal-smoke-moderator');
+  assert.equal(audit.rows[0].decision, 'approved');
+
+  const ordealPoints = await database.execute({
+    sql: 'SELECT COUNT(*) AS count FROM ordeal_score_ledger WHERE submission_id = ?',
+    args: [submissionId]
+  });
+  assert.equal(Number(ordealPoints.rows[0].count), 0);
+});
+
+test('Honor award, duplicate protection, removal, and re-award remain consistent', async () => {
+  const first = await honor.awardHonor(
+    'smoke-guild',
+    'smoke-honor-member',
+    'honor_1',
+    'smoke-moderator'
+  );
+  assert.equal(first.success, true);
+
+  const duplicate = await honor.awardHonor(
+    'smoke-guild',
+    'smoke-honor-member',
+    'honor_1',
+    'smoke-moderator'
+  );
+  assert.equal(duplicate.success, false);
+
+  const removed = await honor.removeHonor(
+    'smoke-guild',
+    'smoke-honor-member',
+    'honor_1',
+    'smoke-moderator'
+  );
+  assert.equal(removed.success, true);
+
+  const reawarded = await honor.awardHonor(
+    'smoke-guild',
+    'smoke-honor-member',
+    'honor_1',
+    'smoke-moderator'
+  );
+  assert.equal(reawarded.success, true);
+
+  const active = await honor.getMemberHonors('smoke-guild', 'smoke-honor-member');
+  assert.equal(active.length, 1);
+  assert.equal(active[0].honor_id, 'honor_1');
+});
+
+test('Saga point adjustments include approved AAR and Trial points and cap deductions', async () => {
+  const balance = await sagaDatabase.getSagaPoints('smoke-guild', 'smoke-member-a');
+  assert.equal(balance, 6);
+
+  const deduction = await sagaDatabase.applySagaAdjustment({
+    guildId: 'smoke-guild',
+    userId: 'smoke-member-a',
+    moderatorId: 'smoke-moderator',
+    action: 'deduct',
+    requestedPoints: 99,
+    reason: 'Migration smoke test'
+  });
+
+  assert.equal(deduction.currentBalance, 6);
+  assert.equal(deduction.appliedPoints, 6);
+  assert.equal(deduction.newBalance, 0);
+
+  const finalBalance = await sagaDatabase.getSagaPoints('smoke-guild', 'smoke-member-a');
+  assert.equal(finalBalance, 0);
+});
