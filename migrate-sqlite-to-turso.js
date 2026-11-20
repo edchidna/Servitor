@@ -64,6 +64,7 @@ async function main() {
     databaseReady = true;
     const target = database.getClient();
     source = new Database(sourcePath, { readonly: true, fileMustExist: true });
+    source.exec('BEGIN'); // Hold one consistent read snapshot for the full export.
 
     await target.execute('PRAGMA foreign_keys = ON');
     await target.execute('SELECT 1 AS connected');
@@ -109,7 +110,16 @@ async function main() {
         } finally {
           tx.close();
         }
-        console.log(`Migrated ${sourceRows.length} rows from ${table}.`);
+        for (const row of sourceRows) {
+          const exists = await target.execute({
+            sql: 'SELECT 1 FROM honors WHERE honor_id = ?',
+            args: [row.honor_id]
+          });
+          if (!exists.rows.length) {
+            throw new Error(`Honor row verification failed for ${row.honor_id}.`);
+          }
+        }
+        console.log(`Verified ${sourceRows.length} Honor rows.`);
         continue;
       }
 
@@ -146,10 +156,21 @@ async function main() {
       } finally {
         tx.close();
       }
-      console.log(`Migrated ${sourceRows.length} rows from ${table}.`);
+      const targetCountResult = await target.execute(
+        `SELECT COUNT(*) AS count FROM ${quoted}`
+      );
+      const targetCount = Number(targetCountResult.rows[0]?.count || 0);
+      if (targetCount !== sourceRows.length) {
+        throw new Error(
+          `Row-count verification failed for ${table}: source=${sourceRows.length}, target=${targetCount}.`
+        );
+      }
+
+      console.log(`Verified ${sourceRows.length} rows from ${table}.`);
     }
 
-    console.log('SQLite to Turso transfer completed. Verify row counts before switching the bot.');
+    source.exec('COMMIT');
+    console.log('SQLite to Turso transfer completed. Verify key records before switching the bot.');
   } finally {
     if (source) source.close();
     if (databaseReady) await database.closeDatabase();
