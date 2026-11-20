@@ -148,6 +148,15 @@ function seedLegacyRows(source) {
       i <= 5 ? `assets/honors/legacy-${i}.png` : null
     );
   }
+  // Exercise replacement rather than sequential upserts: display_order is
+  // UNIQUE, and two existing Honor rows have swapped positions.
+  source.exec('UPDATE honors SET display_order = display_order + 100');
+  source.prepare('UPDATE honors SET display_order = ? WHERE honor_id = ?').run(2, 'honor_1');
+  source.prepare('UPDATE honors SET display_order = ? WHERE honor_id = ?').run(1, 'honor_2');
+  for (let i = 3; i <= 10; i++) {
+    source.prepare('UPDATE honors SET display_order = ? WHERE honor_id = ?')
+      .run(i, `honor_${i}`);
+  }
   source.prepare(
     'INSERT INTO honor_awards (id, guild_id, user_id, honor_id, awarded_by, awarded_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(601, 'legacy-guild', 'legacy-member', 'honor_1', 'legacy-mod', '2026-01-05 00:00:00', 1);
