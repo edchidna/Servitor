@@ -20,8 +20,8 @@ const {
     SeparatorBuilder
 } = require('discord.js');
 
-const trialDatabase = require('./trial-database');
-const db = trialDatabase.db;
+const trialDatabase = require('./trial-database-turso');
+const database = require('./turso-database');
 
 // Prevent simultaneous Trial reviews of the same submission.
 const processingTrialReviews = new Set();
@@ -615,17 +615,11 @@ function buildTrialReviewContainer(data) {
 // GET TRIAL COMPLETER PROGRESSION
 // ==========================================
 
-function getTrialCompleterProgress(completers) {
-    return completers.map(member => {
-        const progress = trialDatabase.getMemberTrialProgress(
-            member.id
-        );
-
-        return {
-            id: member.id,
-            progress
-        };
-    });
+async function getTrialCompleterProgress(completers) {
+    return Promise.all(completers.map(async member => ({
+        id: member.id,
+        progress: await trialDatabase.getMemberTrialProgress(member.id)
+    })));
 }
 
 // ==========================================
@@ -729,7 +723,7 @@ async function handleTrialSubmission(interaction) {
             packMembers
         );
 
-        submissionId = trialDatabase.createTrialSubmission({
+        submissionId = await trialDatabase.createTrialSubmission({
             submitterId: interaction.user.id,
             trialKey,
             evidence: evidenceRecords,
@@ -758,7 +752,7 @@ async function handleTrialSubmission(interaction) {
         // GET COMPLETER PROGRESSION
         // ----------------------------------
 
-        const completerProgress = getTrialCompleterProgress(
+        const completerProgress = await getTrialCompleterProgress(
             completers
         );
 
@@ -808,7 +802,7 @@ async function handleTrialSubmission(interaction) {
         // SAVE DISCORD REFERENCES
         // ----------------------------------
 
-        trialDatabase.setTrialDiscordReferences({
+        await trialDatabase.setTrialDiscordReferences({
             submissionId,
             reviewMessageId: reviewMessage.id,
             evidenceThreadId: null
@@ -853,17 +847,12 @@ async function handleTrialSubmission(interaction) {
             };
         });
 
-        const evidenceUpdate = db.prepare(`
-            UPDATE trial_submissions
-            SET evidence = ?
-            WHERE id = ?
-              AND status = 'pending'
-        `).run(
-            JSON.stringify(archivedEvidence),
-            submissionId
-        );
+        const evidenceUpdate = await database.execute({
+            sql: 'UPDATE trial_submissions SET evidence = ? WHERE id = ? AND status = \'pending\'',
+            args: [JSON.stringify(archivedEvidence), submissionId]
+        });
 
-        if (evidenceUpdate.changes !== 1) {
+        if (Number(evidenceUpdate.rowsAffected) !== 1) {
             throw new Error(
                 `Could not archive evidence for Trial submission #${submissionId}.`
             );
@@ -902,9 +891,7 @@ async function handleTrialSubmission(interaction) {
 
         if (submissionId !== null) {
             try {
-                trialDatabase.deletePendingTrialSubmission(
-                    submissionId
-                );
+                await trialDatabase.deletePendingTrialSubmission(submissionId);
             } catch (cleanupError) {
                 console.error(
                     'Trial database cleanup failed:',
@@ -980,7 +967,7 @@ async function processTrialReviewDecision(interaction) {
         }
 
         // Confirm that this is a genuine, pending submission and its original review message.
-        const submission = trialDatabase.getTrialSubmission(submissionId);
+        const submission = await trialDatabase.getTrialSubmission(submissionId);
 
         if (!submission) {
             await interaction.reply({
@@ -1110,18 +1097,10 @@ async function processTrialReviewDecision(interaction) {
 
                     // Record tenure only if no record already exists.
                     // This prevents accidentally resetting existing tenure.
-                    db.prepare(`
-                INSERT OR IGNORE INTO iron_wolves_tenure (
-                    guild_id,
-                    user_id,
-                    assigned_at
-                )
-                VALUES (?, ?, ?)
-            `).run(
-                        interaction.guild.id,
-                        member.id,
-                        new Date().toISOString()
-                    );
+                    await database.execute({
+                        sql: 'INSERT OR IGNORE INTO iron_wolves_tenure (guild_id, user_id, assigned_at) VALUES (?, ?, ?)',
+                        args: [interaction.guild.id, member.id, new Date().toISOString()]
+                    });
 
                     console.log(
                         `[Iron Wolves] Graduation reward processed for ${member.user.tag}.`
@@ -1359,11 +1338,11 @@ async function handleTrialReviewReaction(reaction, user) {
             return false;
         }
 
-        const submissionRecord = db.prepare(`
-            SELECT id
-            FROM trial_submissions
-            WHERE review_message_id = ?
-        `).get(message.id);
+        const submissionResult = await database.execute({
+            sql: 'SELECT id FROM trial_submissions WHERE review_message_id = ?',
+            args: [message.id]
+        });
+        const submissionRecord = submissionResult.rows[0];
 
         if (!submissionRecord) {
             await resolvedReaction.users.remove(user.id).catch(() => {});
@@ -1414,7 +1393,7 @@ async function handleTrialReviewReaction(reaction, user) {
 
         await processTrialReviewDecision(adapter);
 
-        const updatedSubmission = trialDatabase.getTrialSubmission(submissionId);
+        const updatedSubmission = await trialDatabase.getTrialSubmission(submissionId);
 
         if (updatedSubmission && updatedSubmission.status !== 'pending') {
             await message.reactions.removeAll().catch(error => {
@@ -1453,7 +1432,7 @@ async function handleTrialMemberUpdate(oldMember, newMember) {
         }
 
         // Check permanent Trial progression.
-        const progress = trialDatabase.getMemberTrialProgress(newMember.id);
+        const progress = await trialDatabase.getMemberTrialProgress(newMember.id);
 
         if (!progress || !progress.graduated) {
             return;
