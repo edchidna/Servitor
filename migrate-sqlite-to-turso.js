@@ -180,6 +180,15 @@ async function main() {
       );
     }
 
+    const unexpectedTables = [...sourceTables].filter(
+      table => !TABLES_IN_INSERT_ORDER.includes(table)
+    );
+    if (unexpectedTables.length) {
+      throw new Error(
+        `Source SQLite database contains unrecognized tables: ${unexpectedTables.join(', ')}. Review and explicitly account for this data before transferring.`
+      );
+    }
+
     // Preflight every target table before writing anything. Honors are the
     // only exception because schema initialization intentionally seeds them.
     const seededHonorIds = Array.from({ length: 10 }, (_, index) => `honor_${index + 1}`);
