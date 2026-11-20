@@ -276,3 +276,31 @@ Added `aar-database-turso.js` with explicit asynchronous persistence operations 
 - Read an individual member's approved AAR total.
 
 This module is currently a staged persistence layer. The corresponding `index.js` workflows have not yet been switched to it, so it must not be treated as active runtime code. The remaining AAR/Ordeal/Saga direct database operations in `index.js` still require async conversion and call-site updates.
+
+
+## Implementation checkpoint: AAR review, Ordeal review, and Saga adjustment workflows
+
+Additional async persistence work has now been connected to `index.js`:
+
+### AAR
+- Operations, Stratagems, PVP, and Siege submissions now create their report and participant rows through `aar-database-turso.js` in one awaited transaction.
+- AAR review-message lookup, pending report lookup, participant lookup, evidence/review-message association, recovery queue reads, audit lookup, and recovery-marker clearing now use the async AAR persistence module.
+- AAR approval/rejection now uses a pending-only transactional status update, approved score-ledger inserts, and moderation audit insert.
+- Approval receipt builders now await each member's approved AAR total.
+
+### Ordeals
+- Added `ordeal-database-turso.js`.
+- Ordeal review-message lookup and submission lookup now use async persistence.
+- Approval and rejection decisions now share one pending-only transaction that updates the submission and inserts its audit row.
+- The existing Discord role assignment compensation remains in the workflow: newly assigned roles are removed if the database decision fails.
+
+### Saga
+- Added `saga-database-turso.js`.
+- Manual Saga point adjustments now calculate the balance and insert the adjustment inside one async transaction, instead of relying on synchronous SQLite APIs.
+
+### Remaining work and cautions
+- Several direct synchronous SQLite operations remain in `index.js`, including tenure tracking, Saga profile/history reads, Ordeal submission creation/evidence/alert updates, and the old database initialization/runtime path.
+- The AAR/Ordeal/Saga modules are staged and not yet the sole persistence layer.
+- The main startup path still imports legacy `database.js`; it has not yet been safely switched to Turso.
+- `@libsql/client` is not yet installed through the project's package manager, and no Node syntax, unit, integration, Turso, or Discord runtime tests have been run in this environment.
+- Treat all new SQL/transaction paths as implementation candidates until they have been verified against a disposable Turso database and the legacy SQLite schema/behavior.
