@@ -266,16 +266,14 @@ async function reviewTrialSubmission(data) {
       throw new Error(`Trial submission #${submissionId} has already been reviewed.`);
     }
 
-    const [completersResult, packMembersResult] = await Promise.all([
-      tx.execute({
-        sql: 'SELECT user_id FROM trial_completers WHERE submission_id = ? ORDER BY id',
-        args: [submissionId]
-      }),
-      tx.execute({
-        sql: 'SELECT user_id FROM trial_pack_members WHERE submission_id = ? ORDER BY id',
-        args: [submissionId]
-      })
-    ]);
+    const completersResult = await tx.execute({
+      sql: 'SELECT user_id FROM trial_completers WHERE submission_id = ? ORDER BY id',
+      args: [submissionId]
+    });
+    const packMembersResult = await tx.execute({
+      sql: 'SELECT user_id FROM trial_pack_members WHERE submission_id = ? ORDER BY id',
+      args: [submissionId]
+    });
     const completers = completersResult.rows;
     const packMembers = packMembersResult.rows;
 
