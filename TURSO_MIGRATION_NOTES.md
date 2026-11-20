@@ -370,3 +370,11 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - The GitHub Actions API currently shows no workflow run for this branch, so this workflow has **not yet been observed executing**. The checked-in `package-lock.json` is still stale and does not yet include `@libsql/client`.
 - The workflow deliberately skips package install scripts; it is a dependency-resolution and syntax gate, not a native-module, database, or Discord integration test.
 - Do not use the migration branch for deployment until the generated lockfile is reviewed and committed, the workflow passes, and the separate Turso/SQLite/Discord validation steps are completed.
+
+
+## CI lockfile follow-up
+
+- Updated the migration-only GitHub Actions workflow to regenerate `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, install from that generated lockfile with `npm ci --ignore-scripts`, and run `npm run check:syntax`.
+- If the lockfile changes and all preceding steps pass, the workflow commits that generated lockfile back to `migration/turso`. The workflow is scoped to that branch; it does not target `main`.
+- This is CI/build plumbing only. It does not alter the Servitor Discord command, submission, moderation, scoring, Ordeal-role, or notification workflows.
+- The workflow update itself has been committed, but its execution and resulting lockfile commit have not yet been verified. Do not report CI as passing until a completed run is inspected.
