@@ -304,3 +304,36 @@ Additional async persistence work has now been connected to `index.js`:
 - The main startup path still imports legacy `database.js`; it has not yet been safely switched to Turso.
 - `@libsql/client` is not yet installed through the project's package manager, and no Node syntax, unit, integration, Turso, or Discord runtime tests have been run in this environment.
 - Treat all new SQL/transaction paths as implementation candidates until they have been verified against a disposable Turso database and the legacy SQLite schema/behavior.
+
+
+## Latest implementation checkpoint: Ordeal submission, tenure, Saga History, and startup
+
+This checkpoint supersedes earlier notes that said these workflows and startup were still on SQLite.
+
+### Newly connected workflows
+- Ordeal previous-submission duplicate/suspicion checks now use async Turso reads.
+- Ordeal submission creation is transactional and includes challenge details, participants, completers, and suspicious-submission metadata.
+- Ordeal review-message ID and evidence metadata are saved through guarded async updates.
+- NCO alert-message lookup and ID persistence are asynchronous.
+- Failed incomplete Ordeal submissions are removed through a pending-only cleanup operation.
+- Iron Wolves tenure initialization, role-change updates, member-leave cleanup, and Saga History tenure lookup now use async Turso persistence.
+- Saga History point totals, approved AAR report reads, and approved Ordeal reads now use async Turso queries.
+- The remaining direct `db.prepare()` and `db.transaction()` calls were removed from `index.js`; its legacy `database.js` import was removed.
+
+### Runtime startup wiring
+- `index.js` now initializes the shared Turso connection, core schema, Trial schema, and Honor schema before logging the Discord client in.
+- Database initialization enables and verifies foreign-key enforcement on the shared connection.
+- The shared `execute()` API now accepts both SQL strings and libSQL statement objects, matching the call forms used by the migrated persistence modules.
+
+### Legacy data transfer
+- Added `migrate-sqlite-to-turso.js` as a one-time transfer utility for the existing `aar-database.db`.
+- It initializes the target schemas, copies the known application tables in parent-before-child order, preserves explicit IDs, and imports legacy Honor definitions over the schema's seeded defaults.
+- It refuses to merge into non-empty target tables (apart from the seeded Honor rows) to avoid silently duplicating reports or points. Each table import is transactional. If a later table fails after earlier tables committed, reset the disposable target database before retrying.
+- Take an independent copy of the SQLite database before running this utility. Verify source/target row counts and key records before switching production traffic.
+
+### Outstanding release blockers
+- `@libsql/client` has not yet been installed through npm, and `package.json` / `package-lock.json` have not been updated. This environment could not reach the npm registry, so no version or lockfile was guessed or hand-written.
+- No Node syntax checks, automated tests, Turso schema tests, data-transfer rehearsal, or Discord integration tests have been run.
+- The migration utility must be reviewed and rehearsed against a disposable copy of the real SQLite database and a disposable Turso database before using it on production data.
+- The new startup path will not run until the dependency is installed and Turso environment variables are configured.
+- Keep `main` as the known-good fallback. Do not deploy or merge this branch yet.
