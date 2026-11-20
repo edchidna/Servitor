@@ -339,3 +339,60 @@ test('Saga point adjustments include approved AAR and Trial points and cap deduc
   const finalBalance = await sagaDatabase.getSagaPoints('smoke-guild', 'smoke-member-a');
   assert.equal(finalBalance, 0);
 });
+
+
+test('SQLite migration verification compares columns and complete row content', async () => {
+  const BetterSqlite = require('better-sqlite3');
+  const { verifyTransferredTable } = require('../migrate-sqlite-to-turso');
+  const sourcePath = path.join(tempDirectory, 'migration-digest-source.db');
+  const source = new BetterSqlite(sourcePath);
+  const table = 'migration_digest_probe';
+
+  try {
+    source.exec(`
+      CREATE TABLE ${table} (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        payload BLOB
+      )
+    `);
+    source.prepare(
+      `INSERT INTO ${table} (id, name, amount, payload) VALUES (?, ?, ?, ?)`
+    ).run(1, 'alpha', 12.5, Buffer.from([1, 2, 3]));
+    source.prepare(
+      `INSERT INTO ${table} (id, name, amount, payload) VALUES (?, ?, ?, ?)`
+    ).run(2, 'beta', 0.25, Buffer.from([4, 5]));
+
+    await database.execute(`
+      CREATE TABLE ${table} (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        payload BLOB
+      )
+    `);
+    await database.execute({
+      sql: `INSERT INTO ${table} (id, name, amount, payload) VALUES (?, ?, ?, ?)`,
+      args: [1, 'alpha', 12.5, new Uint8Array([1, 2, 3])]
+    });
+    await database.execute({
+      sql: `INSERT INTO ${table} (id, name, amount, payload) VALUES (?, ?, ?, ?)`,
+      args: [2, 'beta', 0.25, new Uint8Array([4, 5])]
+    });
+
+    await verifyTransferredTable(source, database.getClient(), table);
+
+    await database.execute({
+      sql: `UPDATE ${table} SET amount = ? WHERE id = ?`,
+      args: [99, 2]
+    });
+    await assert.rejects(
+      verifyTransferredTable(source, database.getClient(), table),
+      /Content verification failed/i
+    );
+  } finally {
+    source.close();
+    await database.execute(`DROP TABLE IF EXISTS ${table}`);
+  }
+});
