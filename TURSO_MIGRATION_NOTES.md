@@ -261,3 +261,18 @@ The runtime startup path has not yet been switched to Turso. `index.js` still im
 - Compare the async Honor schema and SQL behavior against the legacy schema, especially partial unique index behavior and `PRAGMA table_info` support.
 - Test concurrent duplicate Honor awards against a disposable Turso database.
 - Verify the leaderboard's union query against the final core and Trial schema.
+
+
+## AAR persistence module foundation
+
+Added `aar-database-turso.js` with explicit asynchronous persistence operations for the core AAR workflow:
+
+- Fetch reports by ID/status, review-message ID, and report category.
+- Fetch report participants and moderation audit details.
+- List reports whose Discord review-card update needs recovery.
+- Attach a review message and evidence metadata in one guarded transaction.
+- Save an AAR decision using a pending-only status guard, conditional score-ledger inserts, and audit-log insertion in one interactive transaction.
+- Create a report and its participant rows atomically.
+- Read an individual member's approved AAR total.
+
+This module is currently a staged persistence layer. The corresponding `index.js` workflows have not yet been switched to it, so it must not be treated as active runtime code. The remaining AAR/Ordeal/Saga direct database operations in `index.js` still require async conversion and call-site updates.
