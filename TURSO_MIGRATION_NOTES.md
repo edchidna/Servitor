@@ -504,3 +504,14 @@ These are code-level changes and a test has been added; the latest GitHub Action
 - The passing CI suite is not a rehearsal using a copy of the real `aar-database.db`. The transfer and logical backup/restore rehearsal currently covered by automated tests uses synthetic legacy SQLite data and local libSQL file targets.
 - Still outstanding: rehearse migration using a disposable copy of the actual SQLite database, rehearse a remote Turso logical backup and restore into a second clean disposable Turso database, complete Discord test-server acceptance, and test startup/shutdown on the chosen host.
 - No production database or its independent backup has been accessed or modified. No merge, deployment, or production cutover has occurred.
+
+
+## CI concurrency correction and confirmation (2026-11-21)
+
+- The push and pull-request triggers can both run for the same branch update. Because the remote smoke suite deliberately creates and drops tables in its dedicated database, concurrent workflow runs against the same test database are unsafe.
+- Two overlapping attempts showed test-state interference (duplicate Trial/Honor data and a missing temporary probe table). This was not treated as a product persistence pass.
+- Added a workflow-wide GitHub Actions concurrency group with `cancel-in-progress: false`, so remote validation runs are serialized.
+- Confirmed the correction on the latest workflow commit `5308b46321f5fd18bfd3d3372c5a4a3293f8236a`: push run #105 and the queued pull-request run #106 both completed successfully. Each passed dependency installation, syntax checks, local tests, the Operations modal regression, all 15 remote persistence tests, and the remote foreign-key probe.
+- The CI test database is now reserved for serialized smoke-test runs only. Do not reuse it as a migration or restore target.
+
+The successful CI runs establish remote persistence behavior for the synthetic smoke-test cases. They do not replace the remaining real-database migration rehearsal, remote backup/restore rehearsal, Discord test-server acceptance, or non-production hosting rehearsal.
