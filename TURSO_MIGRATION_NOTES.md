@@ -349,3 +349,13 @@ This checkpoint supersedes earlier notes that said these workflows and startup w
 
 ### Still not verified
 These are code-level safeguards only. No actual Turso connection, export, import, schema migration, Node test, or Discord workflow has run yet. The package dependency and lockfile remain the first execution blocker.
+
+
+## Operational handoff updates
+
+- Added npm scripts: `npm run backup` for the Turso logical JSON export and `npm run migrate:sqlite-to-turso` for the one-time SQLite transfer utility.
+- Updated the README to clearly state that `main` remains the SQLite production baseline and `migration/turso` is not deployable yet.
+- The transfer utility now checks SQLite `integrity_check`, requires every expected application table to exist, holds one source read snapshot, imports each table transactionally, and verifies imported row counts (or Honor IDs) before proceeding.
+- The backup now reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads.
+
+The branch has not been merged, deployed, or tested against a live Turso database.
