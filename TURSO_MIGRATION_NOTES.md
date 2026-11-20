@@ -335,7 +335,7 @@ This checkpoint supersedes earlier notes that said these workflows and startup w
 
 - A disposable remote Turso database has not yet been connected to the test workflow. The optional remote test steps are skipped because `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` are not configured.
 - The real SQLite database has not yet been copied to a disposable target and rehearsed end-to-end. The transfer utility now preflights target emptiness and schema columns, and verifies row content digests, but actual historical data has not been exercised.
-- The logical JSON backup has not yet been tested with a restore/recovery procedure.
+- The logical JSON backup now has a verified local restore utility and a passing local round-trip test. A real remote Turso recovery rehearsal and off-host backup retrieval have not yet been performed.
 - Discord end-to-end acceptance testing has not been run. Existing submission, review, scoring, role, and notification behavior must be verified on a test server.
 - The final hosting environment has not been validated.
 - `main` remains the production SQLite baseline. Do not merge or deploy this branch until the blockers above are resolved.
@@ -363,7 +363,7 @@ The local automated suite is now running successfully; it is not a substitute fo
 - Added npm scripts: `npm run backup` for the Turso logical JSON export and `npm run migrate:sqlite-to-turso` for the one-time SQLite transfer utility.
 - Updated the README to clearly state that `main` remains the SQLite production baseline and `migration/turso` is not deployable yet.
 - The transfer utility now checks SQLite `integrity_check`, requires every expected application table to exist, holds one source read snapshot, imports each table transactionally, and verifies imported row counts (or Honor IDs) before proceeding.
-- The backup now reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads.
+- The backup reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads. A matching `restore-database.js` now restores into a clean target only, validates backup format/schema version/table inventory, preserves the seeded Honor records through upsert, and verifies every restored table by row count and content digest. The end-to-end local test now exercises SQLite migration, JSON backup, and restore to a second database.
 
 The branch has not been merged, deployed, or tested against a live Turso database.
 
@@ -376,7 +376,7 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
 - The local persistence suite contains ten tests covering full SQLite-to-libSQL transfer, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, and content-digest verification.
 - If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
-- Latest verified code test run: GitHub Actions run #36, commit `61aecf40712ae9b8f053a8842db66b703aa50131`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, and all ten persistence tests passed (10 passed, 0 failed). The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
+- Latest verified code test run: GitHub Actions run #43, commit `ed6279e39fa2f1f65cbee24128d20cccab01f810`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, a logical backup/restore round trip, and all ten persistence tests passed (10 passed, 0 failed). The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
 
 ## Foreign-key compatibility risk
 
