@@ -21,6 +21,7 @@
 - Logical JSON backup and clean-target restore utilities, including BLOB preservation and per-table restore verification.
 - Local persistence tests and an Operations modal regression test.
 - GitHub Actions validation workflow scoped to `migration/turso`.
+- Hosting runtime support for provider-supplied `PORT` and graceful SIGINT/SIGTERM shutdown.
 
 ## Validation status
 
