@@ -72,12 +72,23 @@ async function main() {
     await initializeTrialSchema();
     await initializeHonorSchema();
 
+    const integrity = source.prepare('PRAGMA integrity_check').get();
+    if (integrity?.integrity_check !== 'ok') {
+      throw new Error(`Source SQLite integrity check failed: ${integrity?.integrity_check || 'no result'}`);
+    }
+
     const sourceTables = new Set(
       source.prepare(`
         SELECT name FROM sqlite_master
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
       `).all().map(row => row.name)
     );
+    const missingTables = TABLES_IN_INSERT_ORDER.filter(table => !sourceTables.has(table));
+    if (missingTables.length) {
+      throw new Error(
+        `Source SQLite database is missing expected tables: ${missingTables.join(', ')}. Review the source schema before transferring.`
+      );
+    }
 
     for (const table of TABLES_IN_INSERT_ORDER) {
       if (!sourceTables.has(table)) continue;
