@@ -107,3 +107,16 @@ Use a single shared `@libsql/client` instance. For short, fixed SQL groups, use 
 - Confirm `rowsAffected`/change counts are normalized to numbers and preserve existing `changes === 1` guards.
 - Test uniqueness constraints, foreign keys, and rollback behavior against a disposable Turso database.
 - Keep all existing JSON evidence and report payloads intact; do not reinterpret or regenerate their contents.
+### Remaining direct consumers and utility scripts
+
+- `trial.js` directly accesses the shared database in three places (evidence persistence, tenure assignment, and review-message lookup) in addition to calling the Trial database API. These direct calls must be moved to awaited client operations too.
+- `trial.js` calls Trial data methods for progress, submission creation, Discord reference persistence, pending cleanup, review, and member-join progression. Those functions currently return synchronously; each call site must await the async replacement.
+- `index.js` calls Honor data methods in command handlers and Saga History rendering. All returned Honor data must be awaited before building Discord responses.
+- `backup-database.js` currently uses `better-sqlite3`'s local-file backup API. That script cannot remain unchanged after the bot moves to remote Turso. A separate, tested Turso backup/export procedure is required; do not treat a local SQLite backup as a backup of the remote database.
+- `package.json` currently has `better-sqlite3` as a dependency and does not include `@libsql/client`. Dependency replacement should happen only alongside the complete migration, not as a standalone package edit.
+
+### Current branch implementation status
+
+- The only committed change on `migration/turso` so far is this audit document.
+- No application JavaScript or package dependency has been modified yet.
+- The latest audit commit is documentation-only. It is not deployable and must not be used to start the bot as a Turso build.
