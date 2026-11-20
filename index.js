@@ -760,6 +760,14 @@ const client = new Client({
 let aarRecoveryInterval = null;
 let veteranPromotionInterval = null;
 let shutdownPromise = null;
+let databaseReady = false;
+let shuttingDown = false;
+
+// Hosting readiness requires both an initialized database and a connected
+// Discord client. client.isReady() naturally becomes false during reconnects.
+keep_alive.setReadinessCheck(() =>
+  databaseReady && client.isReady() && !shuttingDown
+);
 
 const pendingDifficultySelections = new Map();
 const pendingStratagemDifficultySelections = new Map();
@@ -6222,6 +6230,7 @@ async function startServitor() {
   await initializeCoreSchema();
   await initializeTrialSchema();
   await initializeHonorSchema();
+  databaseReady = true;
 
   if (!process.env.DISCORD_TOKEN) {
     throw new Error('DISCORD_TOKEN is missing from the environment.');
@@ -6246,6 +6255,10 @@ function shutdownServitor(signal) {
 
   shutdownPromise = (async () => {
     console.log(`Received ${signal}; shutting down Servitor...`);
+
+    // Stop reporting ready before any shutdown work begins.
+    shuttingDown = true;
+    databaseReady = false;
 
     if (aarRecoveryInterval) clearInterval(aarRecoveryInterval);
     if (veteranPromotionInterval) clearInterval(veteranPromotionInterval);
