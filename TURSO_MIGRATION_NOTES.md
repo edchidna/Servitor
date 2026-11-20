@@ -359,3 +359,14 @@ These are code-level safeguards only. No actual Turso connection, export, import
 - The backup now reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads.
 
 The branch has not been merged, deployed, or tested against a live Turso database.
+
+
+
+## Validation workflow checkpoint
+
+- Added `@libsql/client` as an exact `0.18.0` dependency in `package.json`. The npm registry currently lists 0.18.0 as the latest release.
+- Added `npm run check:syntax` to run Node's parser check over every root-level JavaScript file.
+- Added `.github/workflows/turso-migration-validation.yml`, scoped to pushes on `migration/turso` and manual dispatch. It uses Node 22, runs `npm install --ignore-scripts` to reconcile the lockfile in the runner, runs the syntax checks, and uploads the generated lockfile as a short-lived artifact for review.
+- The GitHub Actions API currently shows no workflow run for this branch, so this workflow has **not yet been observed executing**. The checked-in `package-lock.json` is still stale and does not yet include `@libsql/client`.
+- The workflow deliberately skips package install scripts; it is a dependency-resolution and syntax gate, not a native-module, database, or Discord integration test.
+- Do not use the migration branch for deployment until the generated lockfile is reviewed and committed, the workflow passes, and the separate Turso/SQLite/Discord validation steps are completed.
