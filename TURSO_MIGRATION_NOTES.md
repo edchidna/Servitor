@@ -210,3 +210,30 @@ Latest commit:
 - `63b92188cd1cd9e8e2fed4e7a10e823ac8abb613` — async Trial and Honor schema initialization.
 
 The foundation code is not yet validated against a live/disposable Turso database. In particular, transaction-wrapped DDL, `PRAGMA table_info`, foreign-key enforcement, and repeated initialization must be exercised before runtime adoption.
+
+
+## Trial persistence implementation checkpoint
+
+Two Trial runtime files have now been added/updated on the migration branch:
+
+- Added `trial-database-turso.js` with asynchronous implementations for:
+  - submission creation, including atomic insertion of the submission, completers, and Pack Members;
+  - submission retrieval and JSON evidence parsing;
+  - member progression reads;
+  - pending-only review with progression awards, Pack Member role checks, Trial score ledger entries, and audit log in one transaction;
+  - Discord review/evidence reference persistence;
+  - safe deletion of failed pending submissions and dependent rows.
+- Updated `trial.js` to await those operations, await completer progression reads, and replace its direct Trial evidence/tenure/reaction lookup SQLite queries with the shared Turso query helper.
+
+The review transaction deliberately performs its dependent SQL operations sequentially on the same transaction handle. A review still uses the pending-status guard and requires the update to affect exactly one row before awards and audit data are written.
+
+### Important integration warning
+
+This is not yet a runnable migration or deployable bot state. The rest of the application still imports the synchronous SQLite `database.js`; startup has not yet been changed to initialize Turso and all schemas. `package.json` and the lockfile still do not install `@libsql/client`. The new Trial module is therefore a staged migration target, not a working standalone runtime yet.
+
+The new Trial implementation also needs a careful parity review against the old validator behavior and tests against a disposable Turso database. Do not deploy this branch at this stage.
+
+Latest Trial commits:
+- `744942c9c145758e230624290369ca6a0e6c427b` — async Trial persistence module.
+- `0a726cb5b0f3b0f13d008dac243102d3614afb11` — async Trial Discord workflow callers.
+- `dec43d37e3a7e2700518e1502904b61d0299d3ba` — serialize dependent reads inside Trial review transaction.
