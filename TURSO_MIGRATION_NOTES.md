@@ -410,3 +410,18 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Rechecked the legacy SQLite schema declarations in `database.js`, `trial-database.js`, and `honor-database.js` on `main` against `TABLES_IN_INSERT_ORDER` in the transfer utility.
 - All 19 legacy application tables found in those schema modules are represented in the transfer list; no missing legacy table was found in this table-name pass.
 - This is only a table inventory check. Column-by-column compatibility, historical data edge cases, and row-count verification still require a real copy of the production SQLite database and a disposable Turso target.
+
+
+## Expanded persistence smoke-test results
+
+- Expanded the local libSQL smoke suite from 4 to 8 tests, covering AAR, Trial, Ordeal, Honor, Saga adjustments, foreign keys, schema initialization, and transactional rollback.
+- The first expanded run exposed a Trial JSON-validation bug: the validator rejected the standard non-enumerable `length` property on arrays.
+- Fixed the validator to skip the intrinsic array length property while continuing to reject sparse arrays, symbols, non-index properties, accessors, non-plain objects, circular references, and non-finite numbers.
+- Verified GitHub Actions run #14 completed successfully on commit `d020ab433f8f71eb0ab69efa1f0bac5652f4bf51`: dependency installation passed, syntax check passed, and all 8 smoke tests passed (8 passed, 0 failed). npm reported 0 known vulnerabilities in the audited dependency tree at that run.
+- This validation used a temporary local libSQL database. It does not replace a disposable remote Turso rehearsal or Discord integration/acceptance testing.
+
+## Legacy schema column inventory
+
+- Compared the 19 legacy application tables declared across the three SQLite schema modules with their migrated schema declarations.
+- The table-column pass found matching legacy application columns for all 19 tables. Foreign-key declarations are structural constraints and are not counted as columns in this comparison.
+- This is a static declaration comparison only; production data compatibility, exact runtime types/constraints, and migration row integrity still require the actual SQLite database copy and remote rehearsal.
