@@ -158,12 +158,25 @@ async function restoreDatabase(backupFilePath) {
 
     // Preflight all tables before importing a single row.
     const honorIds = Array.from({ length: 10 }, (_, index) => `honor_${index + 1}`);
-    const targetHonors = await target.execute('SELECT honor_id FROM honors ORDER BY honor_id');
-    const targetHonorIds = targetHonors.rows.map(row => row.honor_id);
-    if (
-      targetHonorIds.length !== honorIds.length ||
-      honorIds.some(id => !targetHonorIds.includes(id))
-    ) {
+    const defaultHonorIcons = [
+      'assets/honors/Conversion ward.png',
+      'assets/honors/Crux Terminatus.png',
+      'assets/honors/Fang Necklace.png',
+      'assets/honors/Gem.png',
+      'assets/honors/Rune.png',
+      null, null, null, null, null
+    ];
+    const targetHonors = await target.execute(
+      'SELECT honor_id, display_name, display_order, icon_path FROM honors ORDER BY display_order'
+    );
+    const targetHonorsAreCleanSeed = targetHonors.rows.length === honorIds.length &&
+      targetHonors.rows.every((row, index) =>
+        row.honor_id === honorIds[index] &&
+        row.display_name === `Honor ${index + 1}` &&
+        Number(row.display_order) === index + 1 &&
+        (row.icon_path ?? null) === defaultHonorIcons[index]
+      );
+    if (!targetHonorsAreCleanSeed) {
       throw new Error('Target honors table is not in its expected clean seeded state.');
     }
 
