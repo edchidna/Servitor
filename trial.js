@@ -11,12 +11,20 @@ const {
     StringSelectMenuBuilder,
     UserSelectMenuBuilder,
     FileUploadBuilder,
-    AttachmentBuilder
-
+    AttachmentBuilder,
+    MessageFlags,
+    ContainerBuilder,
+    TextDisplayBuilder,
+    MediaGalleryBuilder,
+    MediaGalleryItemBuilder,
+    SeparatorBuilder
 } = require('discord.js');
 
 const trialDatabase = require('./trial-database');
 const db = trialDatabase.db;
+
+// Prevent simultaneous Trial reviews of the same submission.
+const processingTrialReviews = new Set();
 const { refreshLeaderboard } = require('./leaderboard');
 
 // ==========================================
@@ -508,65 +516,99 @@ function prepareTrialEvidenceRecords(evidenceFiles) {
 }
 
 // ==========================================
-// TRIAL REVIEW BUTTONS
-// ==========================================
-
-function createTrialReviewButtons(submissionId) {
-    const approveButton = new ButtonBuilder()
-        .setCustomId(`trial_approve_${submissionId}`)
-        .setLabel('Approve Trial')
-        .setStyle(ButtonStyle.Success);
-
-    const rejectButton = new ButtonBuilder()
-        .setCustomId(`trial_reject_${submissionId}`)
-        .setLabel('Reject Trial')
-        .setStyle(ButtonStyle.Danger);
-
-    const row = new ActionRowBuilder()
-        .addComponents(
-            approveButton,
-            rejectButton
-        );
-
-    return [row];
-}
-
-// ==========================================
 // CREATE PENDING TRIAL REPORT EMBED
 // ==========================================
 
-function createPendingTrialReportEmbed(data) {
-    const embed = new EmbedBuilder()
-        .setTitle(`Unproven Trial Report #${data.submissionId}`)
-        .setColor(0xF1C40F)
-        .setDescription(
-            [
-                '**Status:** Pending Review',
-                '',
-                `**Submitted by:** <@${data.submitterId}>`,
-                `**Trial:** ${data.trialKey.replace('_', ' ').toUpperCase()}`,
-                '',
-                '**Trial Completers**',
-                ...data.completers.map(member =>
-                    `• <@${member.id}> — Progression: ${member.progress.completedCount}/3`
-                ),
-                '',
-                '**Pack Members**',
-                ...data.packMembers.map(member =>
-                    `• <@${member.id}> — ${member.hasUnprovenRole
-                        ? '0 Saga Points (Unproven)'
-                        : '+2 Saga Points (Projected)'
-                    }`
-                ),
-                '',
-                `**Evidence:** ${data.evidenceCount} file(s) attached`,
-                '',
-                '*Saga Points are recalculated at approval. Pack Members receive no bonus points.*'
-            ].join('\n')
-        )
-        .setTimestamp();
+function buildTrialReviewContainer(data) {
+    const statusLabel = data.reviewStatus === 'approved'
+        ? 'APPROVED'
+        : data.reviewStatus === 'rejected'
+            ? 'REJECTED'
+            : 'PENDING REVIEW';
 
-    return embed;
+    const evidenceItems = data.evidence.map((item, index) => {
+        const fileName = typeof item === 'string' ? item : item.name;
+        const mediaUrl = typeof item === 'string'
+            ? `attachment://${fileName}`
+            : item.url;
+
+        if (!fileName || !mediaUrl) {
+            throw new Error(`Invalid Trial evidence item ${index + 1}.`);
+        }
+
+        return new MediaGalleryItemBuilder()
+            .setURL(mediaUrl)
+            .setDescription(`Original Trial evidence ${index + 1}: ${fileName}`);
+    });
+
+    if (evidenceItems.length < 1 || evidenceItems.length > 6) {
+        throw new Error(
+            `Expected 1-6 Trial gallery items, received ${evidenceItems.length}.`
+        );
+    }
+
+    const completerLines = data.completers.map(member =>
+        `• <@${member.id}> • Progression: ${member.progress.completedCount}/3`
+    );
+
+    const packMemberLines = data.packMembers.map(member =>
+        `• <@${member.id}> • ${member.hasUnprovenRole
+            ? '0 Saga Points (Unproven)'
+            : '+2 Saga Points (Projected)'
+        }`
+    );
+
+    const reportDetails = [
+        `**Submission:** Trial #${data.submissionId}`,
+        `**Submitted by:** <@${data.submitterId}>`,
+        `**Trial:** ${data.trialKey.replace('_', ' ').toUpperCase()}`,
+        `### Trial Completers (${data.completers.length})`,
+        completerLines.join('\n') || 'None',
+        `### Pack Members (${data.packMembers.length})`,
+        packMemberLines.join('\n') || 'None',
+        '*Saga Points are recalculated at approval. Pack Members receive no bonus points.*'
+    ].join('\n\n');
+
+    const container = new ContainerBuilder()
+        .setAccentColor(
+            data.reviewStatus === 'approved'
+                ? 0x2ecc71
+                : data.reviewStatus === 'rejected'
+                    ? 0xe74c3c
+                    : 0xF1C40F
+        )
+        .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+                `# SERVITOR // UNPROVEN TRIAL\n## ${statusLabel}`
+            )
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(reportDetails)
+        );
+
+
+
+    container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent('### Trial Evidence')
+        )
+        .addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(evidenceItems)
+        );
+
+    if (data.reviewResult) {
+        container
+            .addSeparatorComponents(new SeparatorBuilder())
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    `### Review Decision\n${data.reviewResult}`
+                )
+            );
+    }
+
+    return container;
 }
 
 // ==========================================
@@ -728,13 +770,14 @@ async function handleTrialSubmission(interaction) {
             )
         }));
 
-        const embed = createPendingTrialReportEmbed({
+        const trialContainer = buildTrialReviewContainer({
             submissionId,
             submitterId: interaction.user.id,
             trialKey,
             completers: completerProgress,
             packMembers: packMemberDetails,
-            evidenceCount: evidenceFiles.length
+            evidence: evidenceFiles.map(file => file.name),
+            reviewStatus: 'pending'
         });
 
         // ----------------------------------
@@ -749,16 +792,17 @@ async function handleTrialSubmission(interaction) {
         );
 
         // ----------------------------------
-        // SEND REVIEW REPORT WITH ORIGINAL EVIDENCE
+        // SEND COMPONENTS V2 REVIEW REPORT
         // ----------------------------------
 
-        const reportPayload = {
-            embeds: [embed],
-            components: createTrialReviewButtons(submissionId),
-            files: evidenceAttachments
-        };
-
-        reviewMessage = await reviewChannel.send(reportPayload);
+        reviewMessage = await reviewChannel.send({
+            flags: MessageFlags.IsComponentsV2,
+            components: [trialContainer],
+            files: evidenceAttachments,
+            allowedMentions: {
+                parse: []
+            }
+        });
 
         // ----------------------------------
         // SAVE DISCORD REFERENCES
@@ -771,8 +815,66 @@ async function handleTrialSubmission(interaction) {
         });
 
         // ----------------------------------
-        // SEND NCO DISCREPANCY ALERTS
+        // ARCHIVE ORIGINAL GALLERY ATTACHMENTS
         // ----------------------------------
+
+        const fetchedReviewMessage = await reviewChannel.messages.fetch(
+            reviewMessage.id
+        );
+
+        const galleryItems = fetchedReviewMessage.components
+            .flatMap(container => container.components || [])
+            .filter(component => component.type === 12)
+            .flatMap(gallery => gallery.items || []);
+
+        if (galleryItems.length !== evidenceFiles.length) {
+            throw new Error(
+                `Expected ${evidenceFiles.length} Trial gallery items, found ${galleryItems.length}.`
+            );
+        }
+
+        const archivedEvidence = galleryItems.map((item, index) => {
+            const media = item.media?.data;
+            const attachmentId = media?.attachment_id || media?.id;
+
+            if (!attachmentId || !media?.url) {
+                throw new Error(
+                    `Could not retrieve Discord attachment metadata for Trial evidence ${index + 1}.`
+                );
+            }
+
+            return {
+                id: attachmentId,
+                name: evidenceFiles[index].name,
+                url: media.url,
+                size: evidenceFiles[index].buffer.length,
+                contentType: media.content_type || evidenceFiles[index].contentType,
+                type: 'original'
+            };
+        });
+
+        const evidenceUpdate = db.prepare(`
+            UPDATE trial_submissions
+            SET evidence = ?
+            WHERE id = ?
+              AND status = 'pending'
+        `).run(
+            JSON.stringify(archivedEvidence),
+            submissionId
+        );
+
+        if (evidenceUpdate.changes !== 1) {
+            throw new Error(
+                `Could not archive evidence for Trial submission #${submissionId}.`
+            );
+        }
+
+        // ----------------------------------
+// SEND NCO DISCREPANCY ALERTS
+        // ----------------------------------
+        await reviewMessage.react('\u2705');
+        await reviewMessage.react('\u274C');
+
         await sendTrialRoleDiscrepancyAlerts(
             interaction.client,
             submissionId,
@@ -829,7 +931,7 @@ async function handleTrialSubmission(interaction) {
     }
 }
 
-async function handleTrialReviewInteraction(interaction) {
+async function processTrialReviewDecision(interaction) {
     // Only handle Trial review buttons.
     if (!interaction.isButton()) return false;
 
@@ -1081,70 +1183,84 @@ async function handleTrialReviewInteraction(interaction) {
 
 
 
-        // Update the original report and remove its review buttons.
+        // Update the original V2 report and remove its review buttons.
         try {
-            const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
+            const progressionLines = (reviewResult.progressionAwards || []).map(award => {
+                const progress = `${award.completedTrialCount}/3`;
+                const graduation = award.graduated ? ' • **GRADUATED**' : '';
 
-            updatedEmbed
-                .setColor(decision === 'approved' ? 0x2ecc71 : 0xe74c3c)
-                .setTitle(
-                    decision === 'approved'
-                        ? `Unproven Trial #${submissionId} — APPROVED`
-                        : `Unproven Trial #${submissionId} — REJECTED`
-                )
-                .addFields({
-                    name: 'Review Decision',
-                    value:
-                        `**Decision:** ${decision.toUpperCase()}\n` +
-                        `**Reviewer:** ${reviewer.displayName} (<@${reviewer.id}>)\n` +
-                        `**Reviewed:** <t:${Math.floor(Date.now() / 1000)}:F>`,
-                    inline: false
-                });
+                return `<@${award.userId}>: **${progress} Trials completed**${graduation}`;
+            });
+
+            const pointLines = (reviewResult.pointsAwards || []).map(award => {
+                const points = Number(award.pointsAwarded || 0);
+                return `<@${award.userId}>: **+${points} Saga Points**`;
+            });
+
+            const resultSections = [
+                `**Decision:** ${decision.toUpperCase()}`,
+                `**Reviewer:** ${reviewer.displayName} (<@${reviewer.id}>)`,
+                `**Reviewed:** <t:${Math.floor(Date.now() / 1000)}:F>`
+            ];
 
             if (decision === 'approved') {
-                const progressionLines = (reviewResult.progressionAwards || []).map(award => {
-                    const progress = `${award.completedTrialCount}/3`;
-                    const graduation = award.graduated ? ' — **GRADUATED**' : '';
-
-                    return `<@${award.userId}>: **${progress} Trials completed**${graduation}`;
-                });
-
-                const pointLines = (reviewResult.pointsAwards || []).map(award => {
-                    const points = Number(award.pointsAwarded || 0);
-
-                    return `<@${award.userId}>: **+${points} Saga Points**`;
-                });
-
                 if (progressionLines.length > 0) {
-                    updatedEmbed.addFields({
-                        name: 'Trial Progression Awarded',
-                        value: progressionLines.join('\n'),
-                        inline: false
-                    });
+                    resultSections.push(
+                        '**Trial Progression Awarded**\n' +
+                        progressionLines.join('\n')
+                    );
                 }
 
                 if (pointLines.length > 0) {
-                    updatedEmbed.addFields({
-                        name: 'Pack Member Rewards',
-                        value: pointLines.join('\n'),
-                        inline: false
-                    });
+                    resultSections.push(
+                        '**Pack Member Rewards**\n' +
+                        pointLines.join('\n')
+                    );
                 }
+            } else {
+                resultSections.push(
+                    'No progression or Saga Points were awarded.'
+                );
             }
 
             if (followUpIssues.length > 0) {
-                updatedEmbed.addFields({
-                    name: 'Follow-up Issues',
-                    value: followUpIssues.join('\n'),
-                    inline: false
-                });
+                resultSections.push(
+                    '**Follow-up Issues**\n' +
+                    followUpIssues.join('\n')
+                );
             }
 
-            updatedEmbed.setTimestamp();
+            const resultCompleters = getTrialCompleterProgress(
+                submission.completers.map(member => ({
+                    id: member.user_id
+                }))
+            );
+
+            const resultPackMembers = submission.pack_members.map(member => ({
+                id: member.user_id,
+                hasUnprovenRole: Boolean(member.unproven_role_at_submission)
+            }));
+
+            const resultContainer = buildTrialReviewContainer({
+                submissionId,
+                submitterId: submission.submitter_id,
+                trialKey: submission.trial_key,
+                completers: resultCompleters,
+                packMembers: resultPackMembers,
+                evidence: submission.evidence,
+                reviewStatus: decision,
+                reviewResult: resultSections.join('\n\n')
+            });
 
             await interaction.message.edit({
-                embeds: [updatedEmbed],
-                components: []
+                flags: MessageFlags.IsComponentsV2,
+                components: [resultContainer],
+                attachments: submission.evidence.map(file => ({
+                    id: file.id
+                })),
+                allowedMentions: {
+                    parse: []
+                }
             });
 
         } catch (error) {
@@ -1169,8 +1285,7 @@ async function handleTrialReviewInteraction(interaction) {
             }
         }
 
-
-        const decisionText = decision === 'approved'
+const decisionText = decision === 'approved'
             ? 'The Trial submission has been approved.'
             : 'The Trial submission has been rejected.';
 
@@ -1211,6 +1326,122 @@ async function handleTrialReviewInteraction(interaction) {
     return true;
 }
 
+async function handleTrialReviewReaction(reaction, user) {
+    if (user.bot) return false;
+
+    let lockAcquired = false;
+    let message;
+    let resolvedReaction = reaction;
+
+    try {
+        if (resolvedReaction.partial) {
+            resolvedReaction = await resolvedReaction.fetch();
+        }
+
+        message = resolvedReaction.message;
+
+        if (message.partial) {
+            message = await message.fetch();
+        }
+
+        if (message.channelId !== TRIAL_REVIEW_CHANNEL_ID) return false;
+        if (message.author?.id !== message.client.user.id) return false;
+
+        const emoji = resolvedReaction.emoji.name;
+
+        let decision;
+
+        if (emoji === '\u2705') {
+            decision = 'approve';
+        } else if (emoji === '\u274C') {
+            decision = 'reject';
+        } else {
+            return false;
+        }
+
+        const submissionRecord = db.prepare(`
+            SELECT id
+            FROM trial_submissions
+            WHERE review_message_id = ?
+        `).get(message.id);
+
+        if (!submissionRecord) {
+            await resolvedReaction.users.remove(user.id).catch(() => {});
+            return true;
+        }
+
+        const submissionId = Number(submissionRecord.id);
+
+        if (processingTrialReviews.has(message.id)) {
+            await resolvedReaction.users.remove(user.id).catch(() => {});
+            return true;
+        }
+
+        processingTrialReviews.add(message.id);
+        lockAcquired = true;
+
+        const adapter = {
+            isButton: () => true,
+            customId: `trial_${decision}_${submissionId}`,
+            guild: message.guild,
+            channelId: message.channelId,
+            message,
+            user,
+            client: message.client,
+            deferred: false,
+            replied: false,
+
+            async reply(payload) {
+                this.replied = true;
+
+                console.log(
+                    `[Trial Review] ${payload.content || 'Review action declined'}`
+                );
+
+                await resolvedReaction.users.remove(user.id).catch(() => {});
+            },
+
+            async deferReply() {
+                this.deferred = true;
+            },
+
+            async editReply(payload) {
+                console.log(
+                    `[Trial Review] ${payload.content || 'Review processing finished'}`
+                );
+            }
+        };
+
+        await processTrialReviewDecision(adapter);
+
+        const updatedSubmission = trialDatabase.getTrialSubmission(submissionId);
+
+        if (updatedSubmission && updatedSubmission.status !== 'pending') {
+            await message.reactions.removeAll().catch(error => {
+                console.error(
+                    '[Trial Review] Could not remove final review reactions:',
+                    error
+                );
+            });
+        }
+
+        return true;
+
+    } catch (error) {
+        console.error('[Trial Review] Reaction handler error:', error);
+
+        if (resolvedReaction && user?.id) {
+            await resolvedReaction.users.remove(user.id).catch(() => {});
+        }
+
+        return true;
+
+    } finally {
+        if (lockAcquired && message) {
+            processingTrialReviews.delete(message.id);
+        }
+    }
+}
 async function handleTrialMemberUpdate(oldMember, newMember) {
     try {
         // Only act when the Unproven role has just been added.
@@ -1267,7 +1498,7 @@ module.exports = {
     createTrialSubmissionModal,
     handleTrialPanelInteraction,
     handleTrialSubmission,
-    handleTrialReviewInteraction,
+    handleTrialReviewReaction,
     handleTrialMemberUpdate,
     publishTrialPanel,
 
