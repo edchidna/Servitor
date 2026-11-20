@@ -294,3 +294,70 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+
+test('SQLite migration refuses a populated target before importing any tables', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'servitor-migration-preflight-'));
+  const sourcePath = path.join(directory, 'legacy-source.db');
+  const targetPath = path.join(directory, 'already-used-target.db');
+  const source = new BetterSqlite(sourcePath);
+  const targetSeed = new BetterSqlite(targetPath);
+
+  try {
+    source.pragma('foreign_keys = ON');
+    createLegacySchema(source);
+    seedLegacyRows(source);
+
+    targetSeed.pragma('foreign_keys = ON');
+    createLegacySchema(targetSeed);
+    targetSeed.prepare(
+      'INSERT INTO reports (id, submitter_id, game_mode, report_data) VALUES (?, ?, ?, ?)'
+    ).run(999, 'existing-target-user', 'Operations', '{"operation":"Keep me"}');
+    targetSeed.close();
+
+    const migration = spawnSync(
+      process.execPath,
+      [path.join(__dirname, '..', 'migrate-sqlite-to-turso.js')],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          TURSO_DATABASE_URL: `file:${targetPath}`,
+          TURSO_AUTH_TOKEN: '',
+          SQLITE_DATABASE_PATH: sourcePath
+        }
+      }
+    );
+    assert.notEqual(migration.status, 0);
+    assert.match(
+      migration.stderr,
+      /Target table reports is not empty\. Refusing to merge or duplicate records\./
+    );
+
+    const target = new BetterSqlite(targetPath, { readonly: true });
+    try {
+      assert.equal(
+        target.prepare('SELECT COUNT(*) AS count FROM reports').get().count,
+        1
+      );
+      assert.equal(
+        target.prepare('SELECT id FROM reports').get().id,
+        999
+      );
+      assert.equal(
+        target.prepare('SELECT COUNT(*) AS count FROM report_participants').get().count,
+        0
+      );
+      assert.equal(
+        target.prepare('SELECT COUNT(*) AS count FROM bot_settings').get().count,
+        0
+      );
+    } finally {
+      target.close();
+    }
+  } finally {
+    if (source.open) source.close();
+    if (targetSeed.open) targetSeed.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
