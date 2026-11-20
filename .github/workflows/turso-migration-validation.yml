@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   syntax-and-dependency:
@@ -25,10 +25,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Regenerate package lockfile
-        run: npm install --package-lock-only --ignore-scripts
-
-      - name: Install from the generated lockfile
+      - name: Install dependencies from the committed lockfile
         run: npm ci --ignore-scripts
 
       - name: Check JavaScript syntax
@@ -36,13 +33,3 @@ jobs:
 
       - name: Run local libSQL migration smoke tests
         run: npm run test:libsql
-
-      - name: Commit generated lockfile when changed
-        run: |
-          if ! git diff --quiet -- package-lock.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json
-            git commit -m "chore: generate Turso migration lockfile"
-            git push origin HEAD:migration/turso
-          fi
