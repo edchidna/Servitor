@@ -203,9 +203,27 @@ async function main() {
 
     for (const table of TABLES_IN_INSERT_ORDER) {
       if (!sourceTables.has(table)) continue;
+      const quotedTable = quoteIdentifier(table);
+      const sourceColumns = source.prepare(
+        `PRAGMA table_info(${quotedTable})`
+      ).all();
+      const targetColumnsResult = await target.execute(
+        `PRAGMA table_info(${quotedTable})`
+      );
+      const sourceColumnNames = sourceColumns.map(column => column.name);
+      const targetColumnNames = targetColumnsResult.rows.map(column => column.name);
+      if (JSON.stringify(sourceColumnNames) !== JSON.stringify(targetColumnNames)) {
+        throw new Error(
+          `Column compatibility preflight failed for ${table}: source=[${sourceColumnNames.join(', ')}], target=[${targetColumnNames.join(', ')}].`
+        );
+      }
+      if (getPrimaryKeyColumns(sourceColumns).length === 0) {
+        throw new Error(`Cannot deterministically verify ${table}: no primary key was found.`);
+      }
+
       if (table === 'honors') continue;
       const targetCount = await target.execute(
-        `SELECT COUNT(*) AS count FROM ${quoteIdentifier(table)}`
+        `SELECT COUNT(*) AS count FROM ${quotedTable}`
       );
       if (Number(targetCount.rows[0]?.count || 0) !== 0) {
         throw new Error(
