@@ -485,3 +485,10 @@ The earlier hosting-runtime findings above are historical. The current branch no
 These are code-level changes and a test has been added; the latest GitHub Actions result has not yet been verified. They do not constitute a host runtime test.
 
 **Still blocking host setup / Discord acceptance:** validate the current commit in CI; configure and run remote Turso persistence tests against a dedicated empty disposable database; rehearse SQLite migration, Turso backup, restore, and rollback using disposable copies/targets; then configure the selected host and run the full Discord test-server acceptance checklist. The original production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without explicit approval.
+
+## CI recheck after test-secret configuration (2026-11-21)
+
+- The repository Actions secrets are intended to be named exactly `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN`, and must point to the same dedicated, empty, disposable Turso test database.
+- The workflow runs automatically on pushes to `migration/turso`. Its manual-dispatch control may not be shown while the workflow file exists only on this non-default branch; do not add the workflow to `main` just to expose that control.
+- A fresh branch push is being used to trigger validation after the secrets were configured. Check the resulting Actions run to confirm whether both remote steps execute; a successful workflow with those steps skipped is not remote validation.
+- This CI trigger does not authorize or perform a merge, deployment, production cutover, or access to the production SQLite database.
