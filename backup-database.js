@@ -7,9 +7,26 @@ const path = require('node:path');
 const database = require('./turso-database');
 
 function jsonSafe(value) {
-  return JSON.parse(JSON.stringify(value, (_key, item) =>
-    typeof item === 'bigint' ? item.toString() : item
-  ));
+  return JSON.parse(JSON.stringify(value, (_key, item) => {
+    if (typeof item === 'bigint') return item.toString();
+
+    // libSQL may return BLOBs as Uint8Array rather than Node Buffers.
+    // Preserve the exact bytes in a portable JSON representation.
+    if (Buffer.isBuffer(item)) return item.toJSON();
+    if (ArrayBuffer.isView(item)) {
+      return {
+        type: 'Buffer',
+        data: Array.from(
+          new Uint8Array(item.buffer, item.byteOffset, item.byteLength)
+        )
+      };
+    }
+    if (item instanceof ArrayBuffer) {
+      return { type: 'Buffer', data: Array.from(new Uint8Array(item)) };
+    }
+
+    return item;
+  }));
 }
 
 async function backupDatabase() {
