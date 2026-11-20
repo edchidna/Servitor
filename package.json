@@ -11,7 +11,8 @@
     "check:syntax": "for file in *.js test/*.js; do node --check \"$file\" || exit 1; done",
     "test:libsql": "node --test test/*.test.js",
     "test:turso-remote-fk": "node test/turso-remote-foreign-key-smoke.js",
-    "restore": "node restore-database.js"
+    "restore": "node restore-database.js",
+    "test:operations-modal": "node test-operations-modal.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
