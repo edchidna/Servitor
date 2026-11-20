@@ -58,7 +58,9 @@ async function backupDatabase() {
       tables
     };
 
-    const backupDirectory = path.join(__dirname, 'backups');
+    const backupDirectory = process.env.BACKUP_OUTPUT_DIR
+      ? path.resolve(process.env.BACKUP_OUTPUT_DIR)
+      : path.join(__dirname, 'backups');
     fs.mkdirSync(backupDirectory, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -80,7 +82,11 @@ async function backupDatabase() {
   }
 }
 
-backupDatabase().catch(error => {
-  console.error('Turso database backup failed:', error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  backupDatabase().catch(error => {
+    console.error('Turso database backup failed:', error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { backupDatabase, jsonSafe };
