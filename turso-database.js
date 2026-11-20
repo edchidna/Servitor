@@ -50,6 +50,11 @@ async function initializeDatabase() {
     const nextClient = createClient(config);
 
     try {
+      await nextClient.execute('PRAGMA foreign_keys = ON');
+      const foreignKeys = await nextClient.execute('PRAGMA foreign_keys');
+      if (Number(foreignKeys.rows[0]?.foreign_keys) !== 1) {
+        throw new Error('Could not enable SQLite foreign-key enforcement on the Turso connection.');
+      }
       await nextClient.execute('SELECT 1 AS connected');
       client = nextClient;
       console.log('Turso database connection established.');
@@ -81,11 +86,23 @@ function getClient() {
  * ResultSet is returned unchanged so callers can inspect rowsAffected and
  * lastInsertRowid explicitly.
  */
-async function execute(sql, args = []) {
-  if (typeof sql !== 'string' || !sql.trim()) {
-    throw new TypeError('SQL must be a non-empty string.');
+async function execute(statement, args = []) {
+  if (typeof statement === 'string') {
+    if (!statement.trim()) throw new TypeError('SQL must be a non-empty string.');
+    return getClient().execute({ sql: statement, args });
   }
-  return getClient().execute({ sql, args });
+
+  if (
+    statement &&
+    typeof statement === 'object' &&
+    typeof statement.sql === 'string' &&
+    statement.sql.trim() &&
+    (statement.args === undefined || Array.isArray(statement.args))
+  ) {
+    return getClient().execute(statement);
+  }
+
+  throw new TypeError('Database execute expects a SQL string or a libSQL statement object.');
 }
 
 /**
