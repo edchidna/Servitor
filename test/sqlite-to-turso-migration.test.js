@@ -424,6 +424,63 @@ test('SQLite migration refuses a populated target before importing any tables', 
 });
 
 
+test('SQLite migration refuses unrecognized source tables before importing data', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'servitor-migration-unknown-source-'));
+  const sourcePath = path.join(directory, 'legacy-source.db');
+  const targetPath = path.join(directory, 'target.db');
+  const source = new BetterSqlite(sourcePath);
+
+  try {
+    source.pragma('foreign_keys = ON');
+    createLegacySchema(source);
+    seedLegacyRows(source);
+    source.exec(`
+      CREATE TABLE unrecognized_extension_data (
+        id INTEGER PRIMARY KEY,
+        payload TEXT NOT NULL
+      )
+    `);
+    source.prepare(
+      'INSERT INTO unrecognized_extension_data (id, payload) VALUES (?, ?)'
+    ).run(1, 'must not be silently omitted');
+
+    const migration = spawnSync(
+      process.execPath,
+      [path.join(__dirname, '..', 'migrate-sqlite-to-turso.js')],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          TURSO_DATABASE_URL: `file:${targetPath}`,
+          TURSO_AUTH_TOKEN: '',
+          SQLITE_DATABASE_PATH: sourcePath
+        }
+      }
+    );
+
+    assert.notEqual(migration.status, 0);
+    assert.match(
+      migration.stderr,
+      /contains unrecognized tables: unrecognized_extension_data/
+    );
+
+    const target = new BetterSqlite(targetPath, { readonly: true });
+    try {
+      assert.equal(
+        target.prepare('SELECT COUNT(*) AS count FROM reports').get().count,
+        0,
+        'No source rows should be imported after an unrecognized table is detected.'
+      );
+    } finally {
+      target.close();
+    }
+  } finally {
+    source.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+
 test('logical backup preserves Buffer and Uint8Array BLOB bytes', () => {
   const backing = Uint8Array.from([99, 10, 20, 30, 88]);
   const slicedView = new Uint8Array(backing.buffer, 1, 3);
