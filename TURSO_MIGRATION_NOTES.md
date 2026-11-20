@@ -414,3 +414,11 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - A local regression test confirms matching SQLite/libSQL scalar and BLOB values verify successfully and a changed target value is detected. The end-to-end migration test also exercises the transfer utility against a populated SQLite fixture based on the legacy schema definitions, including representative records in all 19 tables.
 - GitHub Actions run #36 passed on commit `61aecf40712ae9b8f053a8842db66b703aa50131`: normal `npm ci`, syntax validation, and all ten local persistence tests passed (10 passed, 0 failed; dependency audit reported 0 vulnerabilities).
 - The later documentation-only run #33 is tracked separately. Remote Turso tests were skipped because the dedicated test-database secrets are not configured.
+
+
+## Discord workflow preservation checks
+
+- `deploy-commands.js` is byte-for-byte unchanged from `main`; the slash-command definitions were not modified in this migration branch.
+- A static comparison found all 22 interaction custom IDs in `index.js` unchanged from `main`.
+- The Operations modal regression test now runs in CI and verifies field order/constraints, difficulty values and selection flow, squad size/participant rules, and that the modal still calls the async AAR persistence and existing evidence/review-message path.
+- These checks support the requirement to preserve the established Servitor workflow, but do not replace a live Discord test server acceptance run.
