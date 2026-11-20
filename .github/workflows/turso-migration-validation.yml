@@ -1,0 +1,40 @@
+name: Turso migration validation
+
+on:
+  push:
+    branches:
+      - migration/turso
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-dependency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/turso
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies and regenerate lockfile
+        run: npm install --ignore-scripts
+
+      - name: Check JavaScript syntax
+        run: npm run check:syntax
+
+      - name: Upload generated lockfile for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 7
