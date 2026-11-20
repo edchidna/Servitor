@@ -237,3 +237,27 @@ Latest Trial commits:
 - `744942c9c145758e230624290369ca6a0e6c427b` — async Trial persistence module.
 - `0a726cb5b0f3b0f13d008dac243102d3614afb11` — async Trial Discord workflow callers.
 - `dec43d37e3a7e2700518e1502904b61d0299d3ba` — serialize dependent reads inside Trial review transaction.
+
+
+## Implementation checkpoint: Honor and leaderboard async conversion
+
+The migration branch now includes the following additional changes:
+
+- Replaced synchronous Honor persistence calls in `honor.js` with awaited calls through the shared Turso service.
+- Converted Honor award and removal to interactive transactions so the existence checks and writes use one transaction. The existing partial unique index remains the final duplicate-award guard.
+- Converted Honor rename and display-layout composition to async workflows. Display-layout reads use one read transaction for a consistent settings/awards view.
+- Updated the Honor command/autocomplete and Saga History call sites in `index.js` to await their asynchronous results.
+- Converted leaderboard score aggregation, saved-message lookup, and message-ID persistence to asynchronous Turso queries. The existing Discord message update/recreate behavior remains.
+- Reused the existing `feature-database-schemas.js` Honor initializer rather than keeping a duplicate schema module.
+
+### Current integration warning
+
+The runtime startup path has not yet been switched to Turso. `index.js` still imports the legacy synchronous `database.js`, and the Trial/Honor schema initializers are not yet wired into startup. The branch is still intentionally non-deployable. `package.json` and its lockfile still need the actual `@libsql/client` dependency installation. No live Turso or Discord test has been run.
+
+### Review items for this checkpoint
+
+- Verify all Honor call sites (including autocomplete and Saga History rendering) are awaited.
+- Confirm the interaction handler remains async at each converted call site.
+- Compare the async Honor schema and SQL behavior against the legacy schema, especially partial unique index behavior and `PRAGMA table_info` support.
+- Test concurrent duplicate Honor awards against a disposable Turso database.
+- Verify the leaderboard's union query against the final core and Trial schema.
