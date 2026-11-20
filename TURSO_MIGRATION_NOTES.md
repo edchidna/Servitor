@@ -331,13 +331,14 @@ This checkpoint supersedes earlier notes that said these workflows and startup w
 - It refuses to merge into non-empty target tables (apart from the seeded Honor rows) to avoid silently duplicating reports or points. Each table import is transactional. If a later table fails after earlier tables committed, reset the disposable target database before retrying.
 - Take an independent copy of the SQLite database before running this utility. Verify source/target row counts and key records before switching production traffic.
 
-### Outstanding release blockers
-- `@libsql/client` has not yet been installed through npm, and `package.json` / `package-lock.json` have not been updated. This environment could not reach the npm registry, so no version or lockfile was guessed or hand-written.
-- No Node syntax checks, automated tests, Turso schema tests, data-transfer rehearsal, or Discord integration tests have been run.
-- The migration utility must be reviewed and rehearsed against a disposable copy of the real SQLite database and a disposable Turso database before using it on production data.
-- The new startup path will not run until the dependency is installed and Turso environment variables are configured.
-- Keep `main` as the known-good fallback. Do not deploy or merge this branch yet.
+### Current release blockers
 
+- A disposable remote Turso database has not yet been connected to the test workflow. The optional remote test steps are skipped because `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` are not configured.
+- The real SQLite database has not yet been copied to a disposable target and rehearsed end-to-end. The transfer utility now preflights target emptiness and schema columns, and verifies row content digests, but actual historical data has not been exercised.
+- The logical JSON backup has not yet been tested with a restore/recovery procedure.
+- Discord end-to-end acceptance testing has not been run. Existing submission, review, scoring, role, and notification behavior must be verified on a test server.
+- The final hosting environment has not been validated.
+- `main` remains the production SQLite baseline. Do not merge or deploy this branch until the blockers above are resolved.
 
 ## Follow-up hardening: backup and transfer verification
 
@@ -348,8 +349,14 @@ This checkpoint supersedes earlier notes that said these workflows and startup w
 - Restored the legacy Trial module's strict JSON-safety validation in the async Trial persistence module. This rejects circular values, non-finite numbers, sparse arrays, symbol keys, accessors, and non-plain objects rather than silently dropping or transforming them during JSON serialization.
 
 ### Still not verified
-These are code-level safeguards only. No actual Turso connection, export, import, schema migration, Node test, or Discord workflow has run yet. The package dependency and lockfile remain the first execution blocker.
 
+- Remote Turso connection behavior, including foreign-key enforcement on the actual database type.
+- Full SQLite-to-Turso transfer using a fresh copy of the actual production database.
+- Backup recovery/restore and an operational rollback rehearsal.
+- Discord permissions, channels, evidence uploads, review actions, role assignment, leaderboard refresh, and other end-to-end workflows.
+- Hosting-provider startup, shutdown, reconnect, and runtime compatibility.
+
+The local automated suite is now running successfully; it is not a substitute for these remote and production-like rehearsals.
 
 ## Operational handoff updates
 
@@ -362,87 +369,42 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 
 
 
-## Validation workflow checkpoint
+## Current CI, dependency, and test status
 
-- Added `@libsql/client` as an exact `0.18.0` dependency in `package.json`. The npm registry currently lists 0.18.0 as the latest release.
-- Added `npm run check:syntax` to run Node's parser check over every root-level JavaScript file.
-- Added `.github/workflows/turso-migration-validation.yml`, scoped to pushes on `migration/turso` and manual dispatch. It uses Node 22, runs `npm install --ignore-scripts` to reconcile the lockfile in the runner, runs the syntax checks, and uploads the generated lockfile as a short-lived artifact for review.
-- The GitHub Actions API currently shows no workflow run for this branch, so this workflow has **not yet been observed executing**. The checked-in `package-lock.json` is still stale and does not yet include `@libsql/client`.
-- The workflow deliberately skips package install scripts; it is a dependency-resolution and syntax gate, not a native-module, database, or Discord integration test.
-- Do not use the migration branch for deployment until the generated lockfile is reviewed and committed, the workflow passes, and the separate Turso/SQLite/Discord validation steps are completed.
+- `@libsql/client` is pinned to `0.18.0` in both `package.json` and `package-lock.json`.
+- GitHub Actions uses Node 22 and runs normal `npm ci` (install scripts are not disabled), `npm run check:syntax`, and `npm run test:libsql`.
+- Syntax validation covers root-level JavaScript files and JavaScript test files.
+- The local persistence suite contains nine tests covering core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, and SQLite-to-libSQL content-digest verification.
+- If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
+- Latest verified test run before this note update: GitHub Actions run #32, commit `3f7895a177053cc9de5d8e24fecbd73a542609ff`; dependency installation, syntax validation, and all nine tests passed. Remote tests were skipped because the secrets were not configured.
 
+## Foreign-key compatibility risk
 
-## CI lockfile follow-up
+- The client documentation says standalone `client.execute()` calls use independent logical database connections; Turso documents foreign-key enforcement as off by default.
+- The startup PRAGMA check and local-file test do not prove that remote Turso enforces foreign keys on every standalone and transactional operation.
+- Added `test/turso-remote-foreign-key-smoke.js` and `npm run test:turso-remote-fk`. The probe creates uniquely named temporary parent/child tables in a dedicated remote test database, checks PRAGMA state across statements and a transaction, and verifies orphan inserts are rejected.
+- The full nine-test persistence suite also runs remotely when the dedicated secrets are present.
+- Remote tests are currently skipped because the required test-database secrets are absent. Treat remote foreign-key behavior as unverified and a production blocker.
 
-- The checked-in `package-lock.json` now includes the exact `@libsql/client@0.18.0` dependency declared in `package.json`.
-- The migration-only GitHub Actions workflow uses `npm ci --ignore-scripts` against the committed lockfile, then runs syntax and local libSQL smoke tests.
-- The workflow has read-only repository permissions. It does not commit generated files or write to any branch.
-- This is CI/build plumbing only. It does not alter the Servitor Discord command, submission, moderation, scoring, Ordeal-role, or notification workflows.
-- The workflow update itself is committed, but its execution has not yet been verified. Do not report CI as passing until a completed run is inspected.
+## Legacy schema inventory and compatibility
 
+- All 19 legacy application tables declared in `database.js`, `trial-database.js`, and `honor-database.js` are represented in the SQLite transfer utility.
+- Static comparison found no differences across the 19 tables in column names, declared types, NOT NULL, PRIMARY KEY, UNIQUE, or DEFAULT declarations.
+- The migrated target additionally has the `servitor_schema_migrations` metadata table.
+- This static check does not replace inspecting the actual production SQLite file or verifying its data.
 
-## Local libSQL smoke-test gate
+## Transfer utility safeguards
 
-- Added `test/turso-client-smoke.test.js` and `npm run test:libsql`.
-- The test uses a temporary local libSQL database; it does not connect to production or require Turso credentials.
-- It checks core/feature schema initialization, foreign-key enforcement on standalone and transactional operations, AAR submission atomicity, pending-only approval behavior, score-ledger writes, audit logging, and rollback after a duplicate participant insert.
-- Added this test command to the migration-only GitHub Actions workflow after syntax validation.
-- This test suite is newly committed but has not yet been observed running. A failed foreign-key assertion is a release blocker, not something to bypass or weaken.
-- The test file exercises persistence boundaries only; it does not change Discord command, submission form, review, role, score display, or notification behavior.
+- Before importing, the transfer utility verifies SQLite `integrity_check`, requires all expected legacy tables, validates the ten permanent Honor IDs, checks target table emptiness, compares source/target column names, and requires primary keys for deterministic verification.
+- Each table import is transactional. A failure after earlier tables committed requires resetting the disposable target before retrying.
+- After each table import, source and target rows are ordered by primary key and compared using SHA-256 digests. The comparison normalizes numeric, text, NULL, and BLOB values.
+- This has been tested with a local SQLite/libSQL fixture, but not yet against the actual production database copy.
 
-## Foreign-key compatibility risk to verify
+## Native dependency and workflow permissions
 
-- The shared client currently enables `PRAGMA foreign_keys` once during initialization and checks the returned value.
-- The official client documentation says standalone `client.execute()` statements each use their own logical database connection, while interactive transactions use a separate transaction connection. SQLite-style foreign-key PRAGMA state is connection-scoped.
-- Therefore, the initialization check alone may not prove enforcement on every later statement/transaction connection. The new smoke test explicitly checks both a standalone read and a transaction connection and attempts an invalid child insert.
-- Do not treat foreign-key enforcement as verified until the smoke test passes on the local driver and a disposable remote Turso database. If it fails, resolve the connection-scoping design rather than removing the test or relaxing the schema constraints.
-
-
-### CI permissions hardening
-
-- Removed the workflow's automatic lockfile regeneration/commit behavior and reduced its GitHub token permissions from `contents: write` to `contents: read`.
-- CI now validates the committed lockfile with `npm ci --ignore-scripts`; lockfile changes must be reviewed and committed explicitly on the migration branch.
-- This avoids giving a dependency-install job write access to repository contents.
-
-
-## Legacy table inventory cross-check
-
-- Rechecked the legacy SQLite schema declarations in `database.js`, `trial-database.js`, and `honor-database.js` on `main` against `TABLES_IN_INSERT_ORDER` in the transfer utility.
-- All 19 legacy application tables found in those schema modules are represented in the transfer list; no missing legacy table was found in this table-name pass.
-- This is only a table inventory check. Column-by-column compatibility, historical data edge cases, and row-count verification still require a real copy of the production SQLite database and a disposable Turso target.
-
-
-## Expanded persistence smoke-test results
-
-- Expanded the local libSQL smoke suite from 4 to 8 tests, covering AAR, Trial, Ordeal, Honor, Saga adjustments, foreign keys, schema initialization, and transactional rollback.
-- The first expanded run exposed a Trial JSON-validation bug: the validator rejected the standard non-enumerable `length` property on arrays.
-- Fixed the validator to skip the intrinsic array length property while continuing to reject sparse arrays, symbols, non-index properties, accessors, non-plain objects, circular references, and non-finite numbers.
-- Verified GitHub Actions run #14 completed successfully on commit `d020ab433f8f71eb0ab69efa1f0bac5652f4bf51`: dependency installation passed, syntax check passed, and all 8 smoke tests passed (8 passed, 0 failed). npm reported 0 known vulnerabilities in the audited dependency tree at that run.
-- This validation used a temporary local libSQL database. It does not replace a disposable remote Turso rehearsal or Discord integration/acceptance testing.
-
-## Legacy schema column inventory
-
-- Compared the 19 legacy application tables declared across the three SQLite schema modules with their migrated schema declarations.
-- The table-column pass found matching legacy application columns for all 19 tables. Foreign-key declarations are structural constraints and are not counted as columns in this comparison.
-- This is a static declaration comparison only; production data compatibility, exact runtime types/constraints, and migration row integrity still require the actual SQLite database copy and remote rehearsal.
-
-
-## Native dependency installation validation
-
-- Removed `--ignore-scripts` from the migration CI's `npm ci` step.
-- CI now runs normal package installation so supported native dependency install steps (including the existing Sharp and better-sqlite3 dependencies) are exercised on the Ubuntu/Node 22 runner, not silently skipped.
-- This still does not prove compatibility on the eventual hosting provider's operating system/runtime; host-specific deployment validation remains required.
-
-
-## Remote foreign-key validation harness
-
-- Added `test/turso-remote-foreign-key-smoke.js`, which requires a dedicated disposable database through `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN`.
-- The probe creates uniquely named temporary parent/child tables, checks foreign-key PRAGMA state across standalone statements and an interactive transaction, verifies orphan inserts are rejected in both contexts, and drops its probe tables afterward.
-- Added `npm run test:turso-remote-fk`.
-- Added an optional GitHub Actions step. It runs only when both dedicated test-database secrets are configured; otherwise CI explicitly reports that remote validation was skipped.
-- Do not point these test secrets at the production database. The probe creates and drops temporary tables.
-- Until this probe passes against a real disposable remote Turso database, remote foreign-key enforcement remains unverified and blocks production readiness.
-
+- CI uses ordinary `npm ci`, so native dependency installation is exercised on the Ubuntu/Node 22 runner. Host-specific compatibility remains unverified.
+- The migration validation workflow has only `contents: read` permission. It does not commit files, write to branches, or deploy.
+- The workflow is scoped to `migration/turso`; `main` remains untouched.
 
 ## SQLite transfer content verification
 
