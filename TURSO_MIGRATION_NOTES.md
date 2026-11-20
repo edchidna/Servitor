@@ -403,3 +403,10 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Removed the workflow's automatic lockfile regeneration/commit behavior and reduced its GitHub token permissions from `contents: write` to `contents: read`.
 - CI now validates the committed lockfile with `npm ci --ignore-scripts`; lockfile changes must be reviewed and committed explicitly on the migration branch.
 - This avoids giving a dependency-install job write access to repository contents.
+
+
+## Legacy table inventory cross-check
+
+- Rechecked the legacy SQLite schema declarations in `database.js`, `trial-database.js`, and `honor-database.js` on `main` against `TABLES_IN_INSERT_ORDER` in the transfer utility.
+- All 19 legacy application tables found in those schema modules are represented in the transfer list; no missing legacy table was found in this table-name pass.
+- This is only a table inventory check. Column-by-column compatibility, historical data edge cases, and row-count verification still require a real copy of the production SQLite database and a disposable Turso target.
