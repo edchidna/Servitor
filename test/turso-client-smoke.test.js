@@ -182,7 +182,7 @@ test('Trial approval preserves progression and Pack Member scoring rules', async
       { user_id: 'trial-smoke-completer', unproven_role_at_submission: false }
     ],
     packMembers: [
-      { user_id: 'trial-smoke-pack', unproven_role_at_submission: false }
+      { user_id: 'smoke-member-a', unproven_role_at_submission: false }
     ]
   });
 
@@ -196,7 +196,7 @@ test('Trial approval preserves progression and Pack Member scoring rules', async
     reviewerId: 'trial-smoke-moderator',
     reviewerName: 'Smoke Moderator',
     decision: 'approved',
-    packMemberRoleStatuses: { 'trial-smoke-pack': false }
+    packMemberRoleStatuses: { 'smoke-member-a': false }
   });
 
   assert.equal(review.decision, 'approved');
@@ -220,7 +220,7 @@ test('Trial approval preserves progression and Pack Member scoring rules', async
       reviewerId: 'trial-smoke-moderator',
       reviewerName: 'Smoke Moderator',
       decision: 'approved',
-      packMemberRoleStatuses: { 'trial-smoke-pack': false }
+      packMemberRoleStatuses: { 'smoke-member-a': false }
     }),
     /already been reviewed/i
   );
@@ -321,7 +321,7 @@ test('Honor award, duplicate protection, removal, and re-award remain consistent
 
 test('Saga point adjustments include approved AAR and Trial points and cap deductions', async () => {
   const balance = await sagaDatabase.getSagaPoints('smoke-guild', 'smoke-member-a');
-  assert.equal(balance, 6);
+  assert.equal(balance, 8);
 
   const deduction = await sagaDatabase.applySagaAdjustment({
     guildId: 'smoke-guild',
@@ -332,8 +332,8 @@ test('Saga point adjustments include approved AAR and Trial points and cap deduc
     reason: 'Migration smoke test'
   });
 
-  assert.equal(deduction.currentBalance, 6);
-  assert.equal(deduction.appliedPoints, 6);
+  assert.equal(deduction.currentBalance, 8);
+  assert.equal(deduction.appliedPoints, 8);
   assert.equal(deduction.newBalance, 0);
 
   const finalBalance = await sagaDatabase.getSagaPoints('smoke-guild', 'smoke-member-a');
