@@ -442,3 +442,14 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Added an optional GitHub Actions step. It runs only when both dedicated test-database secrets are configured; otherwise CI explicitly reports that remote validation was skipped.
 - Do not point these test secrets at the production database. The probe creates and drops temporary tables.
 - Until this probe passes against a real disposable remote Turso database, remote foreign-key enforcement remains unverified and blocks production readiness.
+
+
+## SQLite transfer content verification
+
+- The migration utility now checks source and target column names and compares SHA-256 digests of every row, ordered by the table primary key, rather than relying on row counts alone.
+- Digest normalization handles SQLite/libSQL integer, numeric, text, NULL, and BLOB representations (including Buffer, typed-array views, and ArrayBuffer).
+- Honor rows use the same full-content verification after reconciling the target's seeded Honor records.
+- Added a local regression test that proves matching SQLite/libSQL BLOB and scalar values verify successfully and that a changed target value is detected.
+- Static schema comparison across all 19 legacy application tables found no differences in column names, declared types, NOT NULL, PRIMARY KEY, UNIQUE, or DEFAULT declarations. The target additionally contains the Servitor schema migration metadata table.
+- Latest CI run #25 passed: normal `npm ci`, JavaScript syntax check, and all 9 local libSQL tests passed (9 passed, 0 failed; dependency audit reported 0 vulnerabilities).
+- The optional remote foreign-key probe was skipped because dedicated `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` secrets are not configured. Remote behavior therefore remains unverified.
