@@ -150,9 +150,21 @@ assert.match(
 );
 assert.match(
   submitHandler,
-  /for \(const userId of participants\) \{\s*insertParticipant\.run\(\s*reportId,\s*userId/
+  /await aarDatabase\.createAarReport\(\{/
 );
-console.log('Modal selections feed the existing Operations participant and database path.');
+assert.match(
+  submitHandler,
+  /participants:\s*\[\.\.\.participants\]/
+);
+assert.match(
+  submitHandler,
+  /gameMode:\s*'Operations'/
+);
+assert.match(
+  submitHandler,
+  /createAarReviewMessage\(\s*reportId,\s*interaction\.user\.id,\s*uploadedFiles/
+);
+console.log('Modal selections feed the async AAR persistence path and existing review/evidence flow.');
 
 assert.doesNotMatch(source, /aar_ops_squad_(?:search|toggle|page|confirm|cancel)/);
 assert.doesNotMatch(source, /pendingOperationsSquadPickers|operationsSquadPicker/);
