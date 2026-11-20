@@ -662,19 +662,21 @@ node test-operations-modal.js
 
 The script checks the Operations modal structure, field constraints, difficulty values, difficulty-selection workflow, and participant-selection helper behavior.
 
-There is currently no `test` script in `package.json`, so `npm.cmd test` is not configured. The Operations test is not a full Discord integration test and does not verify live server permissions, channel configuration, role hierarchy, or end-to-end review behavior.
-
-JavaScript syntax can be checked separately:
+The migration branch also includes database-focused checks:
 
 ```powershell
-node --check .\index.js
-node --check .\trial.js
-node --check .\trial-database.js
-node --check .\database.js
-node --check .\leaderboard.js
+npm.cmd run check:syntax
+npm.cmd run test:libsql
 ```
 
-A syntax check does not start the bot or verify live Discord behavior.
+- `check:syntax` checks the root JavaScript files and JavaScript test files.
+- `test:libsql` runs the nine local libSQL persistence tests against a temporary database.
+- `test:turso-remote-fk` probes foreign-key behavior against a dedicated disposable remote Turso database. Set `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` first.
+- GitHub Actions runs the local tests on every migration-branch update. When the two dedicated remote-test secrets are configured, it also runs the full persistence suite against the remote test database and the isolated foreign-key probe.
+
+The remote persistence suite requires an empty, dedicated test database; it creates and drops its own test tables. Never point the test variables at production.
+
+These database tests do not replace live Discord acceptance testing. They do not verify server permissions, channel configuration, role hierarchy, evidence uploads, reactions, or complete end-to-end review behavior.
 
 ## Troubleshooting
 
