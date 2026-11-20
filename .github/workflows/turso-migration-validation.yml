@@ -26,7 +26,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies from the committed lockfile
-        run: npm ci --ignore-scripts
+        run: npm ci
 
       - name: Check JavaScript syntax
         run: npm run check:syntax
