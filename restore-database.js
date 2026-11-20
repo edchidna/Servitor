@@ -242,21 +242,21 @@ async function restoreDatabase(backupFilePath) {
       if (decodedRows.length > 0) {
         const names = columnNames.map(quoteIdentifier).join(', ');
         const placeholders = columnNames.map(() => '?').join(', ');
-        const statements = decodedRows.map(row => ({
-          sql: table === 'honors'
-            ? `INSERT INTO ${quoted} (${names}) VALUES (${placeholders})
-               ON CONFLICT(honor_id) DO UPDATE SET ${columnNames
-                 .filter(name => name !== 'honor_id')
-                 .map(name => `${quoteIdentifier(name)} = excluded.${quoteIdentifier(name)}`)
-                 .join(', ')}`
-            : `INSERT INTO ${quoted} (${names}) VALUES (${placeholders})`,
-          args: columnNames.map(name => row[name])
-        }));
-
         const tx = await target.transaction('write');
         let committed = false;
         try {
-          for (const statement of statements) await tx.execute(statement);
+          if (table === 'honors') {
+            // The target was preflighted to contain only clean seed rows, and
+            // honor_awards is empty. Replace seeds atomically so unique custom
+            // display_order values cannot collide during sequential upserts.
+            await tx.execute('DELETE FROM honors');
+          }
+          for (const row of decodedRows) {
+            await tx.execute({
+              sql: `INSERT INTO ${quoted} (${names}) VALUES (${placeholders})`,
+              args: columnNames.map(name => row[name])
+            });
+          }
           await tx.commit();
           committed = true;
         } catch (error) {
