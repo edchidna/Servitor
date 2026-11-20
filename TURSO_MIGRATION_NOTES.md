@@ -492,3 +492,15 @@ These are code-level changes and a test has been added; the latest GitHub Action
 - The workflow runs automatically on pushes to `migration/turso`. Its manual-dispatch control may not be shown while the workflow file exists only on this non-default branch; do not add the workflow to `main` just to expose that control.
 - A fresh branch push is being used to trigger validation after the secrets were configured. Check the resulting Actions run to confirm whether both remote steps execute; a successful workflow with those steps skipped is not remote validation.
 - This CI trigger does not authorize or perform a merge, deployment, production cutover, or access to the production SQLite database.
+
+
+## Remote Turso CI validation passed (2026-11-21)
+
+- Workflow run #100 on commit `a85486e2362b800a1cbb53be8cb1ca3c9cc84bbd` completed successfully after the disposable test database token was replaced with a read-write token.
+- Dependency installation, JavaScript syntax, local libSQL tests, and the Operations modal regression passed.
+- The full persistence suite also passed against the configured disposable remote Turso database: 15 tests passed, 0 failed.
+- The separate remote foreign-key enforcement probe passed.
+- The remote smoke suite checks that its database is empty before creating its test schema and drops its owned test tables during teardown. Keep this database dedicated to CI smoke tests.
+- The passing CI suite is not a rehearsal using a copy of the real `aar-database.db`. The transfer and logical backup/restore rehearsal currently covered by automated tests uses synthetic legacy SQLite data and local libSQL file targets.
+- Still outstanding: rehearse migration using a disposable copy of the actual SQLite database, rehearse a remote Turso logical backup and restore into a second clean disposable Turso database, complete Discord test-server acceptance, and test startup/shutdown on the chosen host.
+- No production database or its independent backup has been accessed or modified. No merge, deployment, or production cutover has occurred.
