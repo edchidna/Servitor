@@ -51,10 +51,11 @@ function assertJsonSafe(value, fieldName, ancestors = new Set(), valuePath = fie
   try {
     const ownKeys = Reflect.ownKeys(value);
     for (const key of ownKeys) {
+      if (isArray && key === 'length') continue;
       if (typeof key === 'symbol') {
         throw new TypeError(`${valuePath} cannot contain symbol keys.`);
       }
-      if (isArray && key !== 'length') {
+      if (isArray) {
         const index = Number(key);
         if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
           throw new TypeError(`${valuePath} cannot contain non-index array properties.`);
