@@ -374,10 +374,11 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 
 ## CI lockfile follow-up
 
-- Updated the migration-only GitHub Actions workflow to regenerate `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, install from that generated lockfile with `npm ci --ignore-scripts`, and run `npm run check:syntax`.
-- If the lockfile changes and all preceding steps pass, the workflow commits that generated lockfile back to `migration/turso`. The workflow is scoped to that branch; it does not target `main`.
+- The checked-in `package-lock.json` now includes the exact `@libsql/client@0.18.0` dependency declared in `package.json`.
+- The migration-only GitHub Actions workflow uses `npm ci --ignore-scripts` against the committed lockfile, then runs syntax and local libSQL smoke tests.
+- The workflow has read-only repository permissions. It does not commit generated files or write to any branch.
 - This is CI/build plumbing only. It does not alter the Servitor Discord command, submission, moderation, scoring, Ordeal-role, or notification workflows.
-- The workflow update itself has been committed, but its execution and resulting lockfile commit have not yet been verified. Do not report CI as passing until a completed run is inspected.
+- The workflow update itself is committed, but its execution has not yet been verified. Do not report CI as passing until a completed run is inspected.
 
 
 ## Local libSQL smoke-test gate
@@ -395,3 +396,10 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - The official client documentation says standalone `client.execute()` statements each use their own logical database connection, while interactive transactions use a separate transaction connection. SQLite-style foreign-key PRAGMA state is connection-scoped.
 - Therefore, the initialization check alone may not prove enforcement on every later statement/transaction connection. The new smoke test explicitly checks both a standalone read and a transaction connection and attempts an invalid child insert.
 - Do not treat foreign-key enforcement as verified until the smoke test passes on the local driver and a disposable remote Turso database. If it fails, resolve the connection-scoping design rather than removing the test or relaxing the schema constraints.
+
+
+### CI permissions hardening
+
+- Removed the workflow's automatic lockfile regeneration/commit behavior and reduced its GitHub token permissions from `contents: write` to `contents: read`.
+- CI now validates the committed lockfile with `npm ci --ignore-scripts`; lockfile changes must be reviewed and committed explicitly on the migration branch.
+- This avoids giving a dependency-install job write access to repository contents.
