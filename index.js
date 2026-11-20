@@ -5810,15 +5810,48 @@ db.prepare(`
             submissionId !== null
           ) {
             try {
-              const recentMessages = await reviewChannel.messages.fetch({
-                limit: 100
-              });
-              reviewMessage = recentMessages.find(message =>
-                message.author?.id === client.user.id &&
-                message.embeds.some(embed =>
-                  embed.title === `Ordeal Completion #${submissionId}`
-                )
-              ) || null;
+              // First try the exact message ID saved in the database.
+              const savedReview = db.prepare(`
+                SELECT review_message_id
+                FROM ordeal_submissions
+                WHERE id = ?
+                  AND status = 'pending'
+              `).get(submissionId);
+
+              if (savedReview?.review_message_id) {
+                reviewMessage = await reviewChannel.messages.fetch(
+                  savedReview.review_message_id
+                ).catch(() => null);
+              }
+
+              // Fallback for legacy embeds or V2 messages without a saved ID.
+              if (!reviewMessage) {
+                const recentMessages = await reviewChannel.messages.fetch({
+                  limit: 100
+                });
+
+                reviewMessage = recentMessages.find(message => {
+                  if (message.author?.id !== client.user.id) {
+                    return false;
+                  }
+
+                  const legacyMatch = message.embeds.some(embed =>
+                    embed.title === `Ordeal Completion #${submissionId}`
+                  );
+
+                  const v2Match = message.components
+                    .flatMap(container => container.components || [])
+                    .some(component =>
+                      component.type === 10 &&
+                      typeof component.content === 'string' &&
+                      component.content.includes(
+                        `**Submission:** Ordeal #${submissionId}`
+                      )
+                    );
+
+                  return legacyMatch || v2Match;
+                }) || null;
+              }
             } catch (cleanupError) {
               console.error(
                 `Could not locate a partially created review message for Ordeal #${submissionId}:`,
