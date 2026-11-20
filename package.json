@@ -9,7 +9,8 @@
     "backup": "node backup-database.js",
     "migrate:sqlite-to-turso": "node migrate-sqlite-to-turso.js",
     "check:syntax": "for file in *.js; do node --check \"$file\" || exit 1; done",
-    "test:libsql": "node --test test/*.test.js"
+    "test:libsql": "node --test test/*.test.js",
+    "test:turso-remote-fk": "node test/turso-remote-foreign-key-smoke.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
