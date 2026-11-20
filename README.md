@@ -684,10 +684,12 @@ The migration branch also includes database-focused checks:
 ```powershell
 npm.cmd run check:syntax
 npm.cmd run test:libsql
+npm.cmd run test:operations-modal
 ```
 
 - `check:syntax` checks the root JavaScript files and JavaScript test files.
-- `test:libsql` runs the ten local libSQL persistence tests against a temporary database.
+- `test:libsql` runs the ten local libSQL persistence tests against a temporary database, including a complete SQLite migration and backup/restore round trip.
+- `test:operations-modal` checks the existing Operations modal, field constraints, difficulty selection, squad limits, and its async AAR persistence/review path.
 - `test:turso-remote-fk` probes foreign-key behavior against a dedicated disposable remote Turso database. Set `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` first.
 - GitHub Actions runs the local tests on every migration-branch update. When the two dedicated remote-test secrets are configured, it also runs the full persistence suite against the remote test database and the isolated foreign-key probe.
 
