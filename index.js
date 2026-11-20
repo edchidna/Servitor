@@ -1629,6 +1629,111 @@ function buildAarReviewContainer({
   return container;
 }
 
+function buildOrdealReviewContainer({
+  submission,
+  participantIds,
+  completerIds,
+  evidence,
+  reviewStatus = 'pending',
+  reviewResult = null
+}) {
+  const statusLabel = reviewStatus === 'approved'
+    ? 'APPROVED'
+    : reviewStatus === 'rejected'
+      ? 'REJECTED'
+      : 'PENDING REVIEW';
+
+  const evidenceItems = evidence.map((item, index) => {
+    const fileName = typeof item === 'string' ? item : item.name;
+
+    if (!fileName) {
+      throw new Error(`Ordeal evidence item ${index + 1} has no filename.`);
+    }
+
+    const mediaUrl = typeof item === 'string'
+      ? `attachment://${fileName}`
+      : item.url;
+
+    if (!mediaUrl) {
+      throw new Error(`Ordeal evidence item ${index + 1} has no URL.`);
+    }
+
+    return new MediaGalleryItemBuilder()
+      .setURL(mediaUrl)
+      .setDescription(`Original evidence ${index + 1}: ${fileName}`);
+  });
+
+  if (evidenceItems.length < 1 || evidenceItems.length > 6) {
+    throw new Error(
+      `Expected 1-6 Ordeal gallery items, received ${evidenceItems.length}.`
+    );
+  }
+
+  const challengeDetails = [
+    `**Challenge:** ${submission.challenge_name}`,
+    `**Game Mode:** ${submission.game_mode}`,
+    `**Difficulty:** ${submission.difficulty}`,
+    ...(submission.operation_name
+      ? [`**Operation:** ${submission.operation_name}`]
+      : []),
+    `**Gene Seed:** ${submission.gene_seed ?? 'Not specified'}`,
+    `**Armoury Data:** ${submission.armoury_data ?? 'Not specified'}`,
+    '**AAR Points:** 0 (Ordeals do not affect the leaderboard)'
+  ].join('\n');
+
+  const suspiciousWarning = Number(submission.suspicious_flag) === 1
+    ? '\n\n**WARNING: Suspicious submission**\nOverlapping participants were detected with a previous Ordeal submission. Manual review is recommended.'
+    : '';
+
+  const container = new ContainerBuilder()
+    .setAccentColor(
+      Number(submission.suspicious_flag) === 1 ? 0xFFA500 : 0x66583D
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# SERVITOR // ORDEAL COMPLETION\n## ${statusLabel}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Submission:** Ordeal #${submission.id}\n` +
+        `**Submitted by:** <@${submission.submitter_id}>`
+      ),
+      new TextDisplayBuilder().setContent(
+        `### Challenge Details\n${challengeDetails}${suspiciousWarning}`
+      ),
+      new TextDisplayBuilder().setContent(
+        `### Challenge Completers (${completerIds.length})\n` +
+        completerIds.map(id => `<@${id}>`).join('\n')
+      ),
+      new TextDisplayBuilder().setContent(
+        `### Participants (${participantIds.length})\n` +
+        participantIds.map(id => `<@${id}>`).join('\n')
+      ),
+      new TextDisplayBuilder().setContent(
+        `**Reward Role:** <@&${submission.reward_role_id}>`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent('### Challenge Evidence')
+    )
+    .addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(evidenceItems)
+    );
+
+  if (reviewResult) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Review Result\n${reviewResult}`
+      )
+    );
+  }
+
+  return container;
+}
+
 function buildAarApprovalResult(report, participants, reviewerId) {
 
   const reportData = JSON.parse(report.report_data);
@@ -2625,19 +2730,32 @@ async function processOrdealReaction(reaction, user) {
       return;
     }
 
-    const reviewEmbed = message.embeds[0];
+    const mappedSubmission = db.prepare(`
+      SELECT id
+      FROM ordeal_submissions
+      WHERE review_message_id = ?
+    `).get(message.id);
 
-    if (!reviewEmbed || !reviewEmbed.title) {
-      return;
+    let reviewEmbed = null;
+
+    if (mappedSubmission) {
+      submissionId = mappedSubmission.id;
+    } else {
+      // Legacy embed-based submission fallback.
+      reviewEmbed = message.embeds[0];
+
+      if (!reviewEmbed || !reviewEmbed.title) {
+        return;
+      }
+
+      const match = reviewEmbed.title.match(
+        /^Ordeal Completion #(\d+)$/
+      );
+
+      if (!match) return;
+
+      submissionId = Number(match[1]);
     }
-
-    const match = reviewEmbed.title.match(
-      /^Ordeal Completion #(\d+)$/
-    );
-
-    if (!match) return;
-
-    submissionId = Number(match[1]);
 
     const emoji = reaction.emoji.name;
 
@@ -3009,31 +3127,8 @@ async function processOrdealReaction(reaction, user) {
     }
 
     // --------------------------------------
-    // BUILD APPROVAL RECEIPT
+    // BUILD COMPONENTS V2 APPROVAL RECEIPT
     // --------------------------------------
-
-    const updatedEmbed = EmbedBuilder.from(reviewEmbed);
-
-    const statusIndex = updatedEmbed.data.fields.findIndex(
-      field => field.name === 'Status'
-    );
-
-    const finalStatus = decision === 'approved'
-      ? 'APPROVED ✅'
-      : 'REJECTED ❌';
-
-    if (statusIndex !== -1) {
-
-      updatedEmbed.spliceFields(
-        statusIndex,
-        1,
-        {
-          name: 'Status',
-          value: finalStatus,
-          inline: false
-        }
-      );
-    }
 
     const resultDescription = decision === 'approved'
       ? (
@@ -3049,27 +3144,34 @@ async function processOrdealReaction(reaction, user) {
         `Rejected by: <@${user.id}>`
       );
 
-    updatedEmbed.addFields({
-      name: 'Ordeal Review Result',
-      value: resultDescription,
-      inline: false
-    });
-
-    updatedEmbed.setFooter({
-      text: `Space Marine 2 Ordeals | ${decision.toUpperCase()} by <@${user.id}>`
-    });
-
     try {
 
-      const evidenceEmbeds = message.embeds
-        .slice(1)
-        .map(embed => EmbedBuilder.from(embed));
+      const evidence = JSON.parse(
+        submission.evidence || '[]'
+      );
+
+      if (!Array.isArray(evidence)) {
+        throw new Error('Ordeal evidence data is not an array.');
+      }
+
+      const ordealContainer = buildOrdealReviewContainer({
+        submission,
+        participantIds,
+        completerIds,
+        evidence,
+        reviewStatus: decision,
+        reviewResult: resultDescription
+      });
 
       await message.edit({
-        embeds: [
-          updatedEmbed,
-          ...evidenceEmbeds
-        ]
+        flags: MessageFlags.IsComponentsV2,
+        components: [ordealContainer],
+        attachments: evidence.map(file => ({
+          id: file.id
+        })),
+        allowedMentions: {
+          parse: []
+        }
       });
 
     } catch (editError) {
@@ -3080,7 +3182,6 @@ async function processOrdealReaction(reaction, user) {
       );
 
     }
-
     await message.reactions.removeAll().catch(console.error);
 
     console.log(
@@ -3111,6 +3212,7 @@ client.on(
   async (reaction, user) => {
     await processReportReaction(reaction, user);
     await processOrdealReaction(reaction, user);
+    await trial.handleTrialReviewReaction(reaction, user);
   }
 );
 
@@ -3122,7 +3224,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     // UNPROVEN TRIAL INTERACTIONS
     if (await trial.handleTrialPanelInteraction(interaction)) return;
-    if (await trial.handleTrialReviewInteraction(interaction)) return;
     if (await trial.handleTrialSubmission(interaction)) return;
 
     // ======================================
@@ -5297,90 +5398,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 
         // ----------------------------------
-        // CREATE REVIEW EMBED
+        // CREATE COMPONENTS V2 ORDEAL REVIEW
         // ----------------------------------
 
-        const reviewEmbed = new EmbedBuilder()
-          .setColor(suspiciousFlag ? 0xFFA500 : 0xED4245)
-          .setTitle(`Ordeal Completion #${submissionId}`)
-          .setDescription(
-            suspiciousFlag
-              ? '⚠️ This submission has overlapping participants with a previous Ordeal submission. Manual review is recommended.'
-              : 'A new Ordeal completion has been submitted for review.'
-          )
-          .addFields(
-            {
-              name: 'Challenge',
-              value: ordeal.name,
-              inline: true
-            },
-            {
-              name: 'Game Mode',
-              value: gameMode,
-              inline: true
-            },
-            {
-              name: 'Difficulty',
-              value: difficulty,
-              inline: true
-            },
-            ...(gameMode === 'Operations'
-              ? [{
-                name: 'Operation',
-                value: operationName,
-                inline: true
-              }]
-              : []),
-            {
-              name: 'Submitted By',
-              value: `<@${interaction.user.id}>`,
-              inline: true
-            },
-            {
-              name: 'Challenge Completers',
-              value: completerMentions,
-              inline: false
-            },
-            {
-              name: 'Additional Participants',
-              value: additionalMentions,
-              inline: false
-            },
-            {
-              name: 'Gene Seed',
-              value: geneSeed,
-              inline: true
-            },
-            {
-              name: 'Armoury Data',
-              value: String(armouryData),
-              inline: true
-            },
-            {
-              name: 'Reward Role',
-              value: `<@&${ordeal.rewardRoleId}>`,
-              inline: false
-            },
-            {
-              name: 'AAR Points',
-              value: '**0 points** — Ordeals do not contribute to Saga Points or the leaderboard.',
-              inline: false
-            },
-            {
-              name: 'Evidence Files',
-              value: String(permanentFiles.length),
-              inline: true
-            },
-            {
-              name: 'Status',
-              value: 'PENDING APPROVAL',
-              inline: true
-            }
-          )
-          .setFooter({
-            text: 'Space Marine 2 Ordeals | React ✅ to approve or ❌ to reject'
-          })
-          .setTimestamp();
+        const ordealSubmission = {
+          id: submissionId,
+          submitter_id: interaction.user.id,
+          challenge_name: ordeal.name,
+          game_mode: gameMode,
+          difficulty,
+          operation_name: operationName,
+          gene_seed: geneSeed,
+          armoury_data: armouryData,
+          suspicious_flag: suspiciousFlag,
+          reward_role_id: ordeal.rewardRoleId
+        };
+
+        const ordealContainer = buildOrdealReviewContainer({
+          submission: ordealSubmission,
+          participantIds: participants,
+          completerIds,
+          evidence: permanentFiles.map(file => file.name)
+        });
 
 
         // ----------------------------------
@@ -5389,15 +5428,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         reviewMessageCreationAttempted = true;
         reviewMessage = await reviewChannel.send({
-          content: `👤 <@${interaction.user.id}>`,
-          embeds: [reviewEmbed],
+          flags: MessageFlags.IsComponentsV2,
+          components: [ordealContainer],
           files: permanentFiles,
           allowedMentions: {
             parse: []
           }
         });
-
-        db.prepare(`
+db.prepare(`
   UPDATE ordeal_submissions
   SET review_message_id = ?
   WHERE id = ?
@@ -5412,15 +5450,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // SAVE EVIDENCE AND REVIEW MESSAGE
         // ----------------------------------
 
-        const evidence = reviewMessage.attachments.map(file => ({
-          id: file.id,
-          name: file.name,
-          url: file.url,
-          size: file.size,
-          contentType: file.contentType,
-          type: 'original'
-        }));
+        const fetchedReviewMessage = await reviewChannel.messages.fetch(
+          reviewMessage.id
+        );
 
+        const galleryItems = fetchedReviewMessage.components
+          .flatMap(container => container.components || [])
+          .filter(component => component.type === 12)
+          .flatMap(gallery => gallery.items || []);
+
+        if (galleryItems.length !== permanentFiles.length) {
+          throw new Error(
+            `Ordeal evidence mismatch: expected ${permanentFiles.length}, received ${galleryItems.length}.`
+          );
+        }
+
+        const evidence = galleryItems.map((item, index) => {
+          const media = item.media?.data;
+
+          if (!media?.url) {
+            throw new Error(
+              `Ordeal evidence item ${index + 1} has no media URL.`
+            );
+          }
+
+          return {
+            id: media.attachment_id || media.id,
+            name: permanentFiles[index].name,
+            url: media.url,
+            size: permanentFiles[index]?.attachment?.length || 0,
+            contentType: media.content_type || null,
+            type: 'original'
+          };
+        });
         db.prepare(`
   UPDATE ordeal_submissions
   SET
