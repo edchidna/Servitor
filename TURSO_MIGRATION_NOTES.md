@@ -425,3 +425,10 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Compared the 19 legacy application tables declared across the three SQLite schema modules with their migrated schema declarations.
 - The table-column pass found matching legacy application columns for all 19 tables. Foreign-key declarations are structural constraints and are not counted as columns in this comparison.
 - This is a static declaration comparison only; production data compatibility, exact runtime types/constraints, and migration row integrity still require the actual SQLite database copy and remote rehearsal.
+
+
+## Native dependency installation validation
+
+- Removed `--ignore-scripts` from the migration CI's `npm ci` step.
+- CI now runs normal package installation so supported native dependency install steps (including the existing Sharp and better-sqlite3 dependencies) are exercised on the Ubuntu/Node 22 runner, not silently skipped.
+- This still does not prove compatibility on the eventual hosting provider's operating system/runtime; host-specific deployment validation remains required.
