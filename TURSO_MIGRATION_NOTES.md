@@ -471,3 +471,17 @@ This is a source-level implementation only. It has not yet been exercised on the
 - Added a regression test that holds a transaction open, starts shutdown, verifies shutdown remains pending, releases the transaction, and confirms shutdown completes.
 - The backup, restore, and one-time transfer scripts also use the raw client directly, but they are standalone maintenance commands rather than Servitor's Discord runtime. They should be run to completion and not terminated mid-operation.
 - This is a code-level safeguard; the updated test suite still needs a successful CI run on the latest branch head, and host-level termination behavior still needs a non-production runtime rehearsal.
+
+## Hosting readiness follow-up (2026-11-21)
+
+The earlier hosting-runtime findings above are historical. The current branch now includes these changes:
+
+- The health server reads the provider-injected `PORT` value, with `8080` as the local fallback.
+- `/` and `/health` return HTTP 200 while the process is alive.
+- `/ready` returns HTTP 200 only when the database schemas have initialized and the Discord client reports ready. It returns HTTP 503 before readiness, during a Discord reconnect, if the readiness check errors, and once shutdown begins.
+- SIGINT/SIGTERM handling stops recurring jobs, destroys the Discord client, drains/closes the database, and closes the health server.
+- Added an automated HTTP test covering liveness, readiness, an exception in the readiness callback, and unknown routes.
+
+These are code-level changes and a test has been added; the latest GitHub Actions result has not yet been verified. They do not constitute a host runtime test.
+
+**Still blocking host setup / Discord acceptance:** validate the current commit in CI; configure and run remote Turso persistence tests against a dedicated empty disposable database; rehearse SQLite migration, Turso backup, restore, and rollback using disposable copies/targets; then configure the selected host and run the full Discord test-server acceptance checklist. The original production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without explicit approval.
