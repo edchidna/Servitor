@@ -5,7 +5,7 @@ let readinessCheck = () => false;
 const server = http.createServer((req, res) => {
   const pathname = (req.url || '/').split('?')[0];
 
-  if (pathname === '/health') {
+  if (pathname === '/' || pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end("I'm alive");
     return;
@@ -33,7 +33,7 @@ const server = http.createServer((req, res) => {
 
 const port = Number(process.env.PORT || 8080);
 
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
   throw new Error(`Invalid PORT value: ${process.env.PORT}`);
 }
 
