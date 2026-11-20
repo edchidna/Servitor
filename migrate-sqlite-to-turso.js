@@ -7,6 +7,7 @@
 
 require('dotenv').config();
 const path = require('node:path');
+const crypto = require('node:crypto');
 const Database = require('better-sqlite3');
 const database = require('./turso-database');
 const { initializeCoreSchema } = require('./core-database-schema');
@@ -36,6 +37,83 @@ const TABLES_IN_INSERT_ORDER = [
   'honor_awards',
   'honor_settings'
 ];
+
+function canonicalValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'bigint') return { type: 'integer', value: value.toString() };
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
+    return { type: 'blob', value: Buffer.from(value).toString('base64') };
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Cannot verify a non-finite database value.');
+    return { type: 'number', value: Object.is(value, -0) ? '-0' : String(value) };
+  }
+  if (typeof value === 'string' || typeof value === 'boolean') {
+    return { type: typeof value, value };
+  }
+  throw new Error(`Cannot verify unsupported database value type: ${typeof value}`);
+}
+
+function rowsDigest(rows, columns) {
+  const hash = crypto.createHash('sha256');
+  for (const row of rows) {
+    const canonicalRow = columns.map(column => canonicalValue(row[column]));
+    hash.update(JSON.stringify(canonicalRow));
+    hash.update('\\n');
+  }
+  return hash.digest('hex');
+}
+
+function getPrimaryKeyColumns(columns) {
+  return columns
+    .filter(column => Number(column.pk) > 0)
+    .sort((left, right) => Number(left.pk) - Number(right.pk))
+    .map(column => column.name);
+}
+
+async function verifyTransferredTable(source, target, table) {
+  const quoted = quoteIdentifier(table);
+  const sourceColumns = source.prepare(`PRAGMA table_info(${quoted})`).all();
+  const targetColumnsResult = await target.execute(`PRAGMA table_info(${quoted})`);
+  const targetColumns = targetColumnsResult.rows;
+
+  const sourceNames = sourceColumns.map(column => column.name);
+  const targetNames = targetColumns.map(column => column.name);
+  if (JSON.stringify(sourceNames) !== JSON.stringify(targetNames)) {
+    throw new Error(
+      `Column compatibility failed for ${table}: source=[${sourceNames.join(', ')}], target=[${targetNames.join(', ')}].`
+    );
+  }
+
+  const primaryKey = getPrimaryKeyColumns(sourceColumns);
+  if (primaryKey.length === 0) {
+    throw new Error(`Cannot deterministically verify ${table}: no primary key was found.`);
+  }
+  const orderBy = primaryKey.map(quoteIdentifier).join(', ');
+  const sourceRows = source.prepare(`SELECT * FROM ${quoted} ORDER BY ${orderBy}`).all();
+  const targetRowsResult = await target.execute(
+    `SELECT * FROM ${quoted} ORDER BY ${orderBy}`
+  );
+  const targetRows = targetRowsResult.rows;
+
+  if (sourceRows.length !== targetRows.length) {
+    throw new Error(
+      `Row-count verification failed for ${table}: source=${sourceRows.length}, target=${targetRows.length}.`
+    );
+  }
+
+  const sourceDigest = rowsDigest(sourceRows, sourceNames);
+  const targetDigest = rowsDigest(targetRows, targetNames);
+  if (sourceDigest !== targetDigest) {
+    throw new Error(
+      `Content verification failed for ${table}: source and target SHA-256 digests differ.`
+    );
+  }
+
+  console.log(
+    `Verified ${sourceRows.length} rows, ${sourceNames.length} columns, and content digest for ${table}.`
+  );
+}
 
 function quoteIdentifier(identifier) {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
@@ -121,16 +199,7 @@ async function main() {
         } finally {
           tx.close();
         }
-        for (const row of sourceRows) {
-          const exists = await target.execute({
-            sql: 'SELECT 1 FROM honors WHERE honor_id = ?',
-            args: [row.honor_id]
-          });
-          if (!exists.rows.length) {
-            throw new Error(`Honor row verification failed for ${row.honor_id}.`);
-          }
-        }
-        console.log(`Verified ${sourceRows.length} Honor rows.`);
+        await verifyTransferredTable(source, target, table);
         continue;
       }
 
@@ -167,17 +236,7 @@ async function main() {
       } finally {
         tx.close();
       }
-      const targetCountResult = await target.execute(
-        `SELECT COUNT(*) AS count FROM ${quoted}`
-      );
-      const targetCount = Number(targetCountResult.rows[0]?.count || 0);
-      if (targetCount !== sourceRows.length) {
-        throw new Error(
-          `Row-count verification failed for ${table}: source=${sourceRows.length}, target=${targetCount}.`
-        );
-      }
-
-      console.log(`Verified ${sourceRows.length} rows from ${table}.`);
+      await verifyTransferredTable(source, target, table);
     }
 
     source.exec('COMMIT');
