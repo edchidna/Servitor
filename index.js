@@ -1569,16 +1569,24 @@ function buildAarReviewContainer({
   }
 
   const evidenceItems = evidence.map((item, index) => {
-    const fileName = typeof item === 'string' ? item : item.name;
+  const fileName = typeof item === 'string' ? item : item.name;
 
-    if (!fileName) {
-      throw new Error(`AAR evidence item ${index + 1} has no filename.`);
-    }
+  if (!fileName) {
+    throw new Error(`AAR evidence item ${index + 1} has no filename.`);
+  }
 
-    return new MediaGalleryItemBuilder()
-      .setURL(`attachment://${fileName}`)
-      .setDescription(`Original evidence ${index + 1}: ${fileName}`);
-  });
+  const mediaUrl = typeof item === 'string'
+    ? `attachment://${fileName}`
+    : item.url;
+
+  if (!mediaUrl) {
+    throw new Error(`AAR evidence item ${index + 1} has no URL.`);
+  }
+
+  return new MediaGalleryItemBuilder()
+    .setURL(mediaUrl)
+    .setDescription(`Original evidence ${index + 1}: ${fileName}`);
+});
 
   if (evidenceItems.length < 1 || evidenceItems.length > 6) {
     throw new Error(
@@ -1997,7 +2005,18 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     participantIds: participants.map(participant => participant.user_id),
     evidence: evidenceNames
   });
+const botPermissions = reviewChannel.permissionsFor(client.user);
 
+console.log('[AAR Channel Upload Check]', {
+  channelId: reviewChannel.id,
+  canViewChannel: botPermissions?.has(PermissionFlagsBits.ViewChannel),
+  canSendMessages: botPermissions?.has(PermissionFlagsBits.SendMessages),
+  canAttachFiles: botPermissions?.has(PermissionFlagsBits.AttachFiles),
+  files: permanentFiles.map(file => ({
+    name: file.name,
+    size: file.attachment?.length
+  }))
+});
   const reviewMessage = await reviewChannel.send({
     flags: MessageFlags.IsComponentsV2,
     components: [container],
@@ -2006,18 +2025,72 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
       parse: []
     }
   });
-
-  const evidence = reviewMessage.attachments.map(file => ({
-    id: file.id,
+console.log('[AAR Upload Debug]', {
+  outgoingFiles: permanentFiles.map(file => ({
     name: file.name,
-    url: file.url,
-    size: file.size,
-    contentType: file.contentType,
-    type: 'original'
-  }));
+    hasAttachment: Boolean(file.attachment)
+  })),
+  returnedMessageId: reviewMessage.id,
+  returnedAttachmentCount: reviewMessage.attachments.size
+});
 
-  const attachmentsMatch = evidence.length === evidenceNames.length &&
-    evidence.every((file, index) => file.name === evidenceNames[index]);
+const fetchedReviewMessage = await reviewChannel.messages.fetch(
+  reviewMessage.id
+);
+
+console.log('[AAR Fetched Message Debug]', {
+  fetchedAttachmentCount: fetchedReviewMessage.attachments.size,
+  fetchedAttachments: fetchedReviewMessage.attachments.map(file => file.name)
+});
+
+console.log('[AAR Gallery Raw Debug]', JSON.stringify(
+  reviewMessage.components
+    .flatMap(container => container.components || [])
+    .filter(component => component.type === 12)
+    .map(gallery => gallery.items),
+  null,
+  2
+));
+
+ const galleryItems = reviewMessage.components
+  .flatMap(container => container.components || [])
+  .filter(component => component.type === 12)
+  .flatMap(gallery => gallery.items || []);
+
+const evidence = galleryItems.map((item, index) => {
+ console.log('[AAR Media Object Inspection]', {
+  mediaKeys: Object.keys(item.media || {}),
+  mediaObject: item.media,
+  attachmentId: item.media?.attachment_id,
+  mediaId: item.media?.id,
+  url: item.media?.url
+});
+  const media = item.media?.data;
+
+  return {
+    id: media.attachment_id || media.id,
+    name: evidenceNames[index],
+    url: media.url,
+    size: permanentFiles[index]?.attachment?.length || 0,
+    contentType: media.content_type || null,
+    type: 'original'
+  };
+});
+
+console.log('[AAR Evidence Debug]', {
+  expectedCount: evidenceNames.length,
+  actualCount: evidence.length,
+  expectedNames: evidenceNames,
+  actualNames: evidence.map(file => file.name),
+  attachmentIds: evidence.map(file => file.id)
+});
+
+const attachmentsMatch = evidence.length === evidenceNames.length &&
+  evidence.every((file, index) =>
+    file.id &&
+    file.url &&
+    file.name === evidenceNames[index]
+  );
 
   if (!attachmentsMatch) {
     try {
