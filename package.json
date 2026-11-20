@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy-commands.js",
+    "backup": "node backup-database.js",
+    "migrate:sqlite-to-turso": "node migrate-sqlite-to-turso.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
