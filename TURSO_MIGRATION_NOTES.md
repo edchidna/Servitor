@@ -378,3 +378,20 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - If the lockfile changes and all preceding steps pass, the workflow commits that generated lockfile back to `migration/turso`. The workflow is scoped to that branch; it does not target `main`.
 - This is CI/build plumbing only. It does not alter the Servitor Discord command, submission, moderation, scoring, Ordeal-role, or notification workflows.
 - The workflow update itself has been committed, but its execution and resulting lockfile commit have not yet been verified. Do not report CI as passing until a completed run is inspected.
+
+
+## Local libSQL smoke-test gate
+
+- Added `test/turso-client-smoke.test.js` and `npm run test:libsql`.
+- The test uses a temporary local libSQL database; it does not connect to production or require Turso credentials.
+- It checks core/feature schema initialization, foreign-key enforcement on standalone and transactional operations, AAR submission atomicity, pending-only approval behavior, score-ledger writes, audit logging, and rollback after a duplicate participant insert.
+- Added this test command to the migration-only GitHub Actions workflow after syntax validation.
+- This test suite is newly committed but has not yet been observed running. A failed foreign-key assertion is a release blocker, not something to bypass or weaken.
+- The test file exercises persistence boundaries only; it does not change Discord command, submission form, review, role, score display, or notification behavior.
+
+## Foreign-key compatibility risk to verify
+
+- The shared client currently enables `PRAGMA foreign_keys` once during initialization and checks the returned value.
+- The official client documentation says standalone `client.execute()` statements each use their own logical database connection, while interactive transactions use a separate transaction connection. SQLite-style foreign-key PRAGMA state is connection-scoped.
+- Therefore, the initialization check alone may not prove enforcement on every later statement/transaction connection. The new smoke test explicitly checks both a standalone read and a transaction connection and attempts an invalid child insert.
+- Do not treat foreign-key enforcement as verified until the smoke test passes on the local driver and a disposable remote Turso database. If it fails, resolve the connection-scoping design rather than removing the test or relaxing the schema constraints.
