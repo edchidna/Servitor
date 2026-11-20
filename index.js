@@ -3,6 +3,7 @@ require('dotenv').config();
 
 const db = require('./database'); // Legacy SQLite remains in use for unmigrated workflows.
 const aarDatabase = require('./aar-database-turso');
+const ordealDatabase = require('./ordeal-database-turso');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
 const { Resvg } = require('@resvg/resvg-js');
@@ -2655,11 +2656,7 @@ async function processOrdealReaction(reaction, user) {
       return;
     }
 
-    const mappedSubmission = db.prepare(`
-      SELECT id
-      FROM ordeal_submissions
-      WHERE review_message_id = ?
-    `).get(message.id);
+    const mappedSubmission = await ordealDatabase.getSubmissionByReviewMessage(message.id);
 
     let reviewEmbed = null;
 
@@ -2750,11 +2747,7 @@ async function processOrdealReaction(reaction, user) {
     // GET SUBMISSION
     // --------------------------------------
 
-    const submission = db.prepare(`
-      SELECT *
-      FROM ordeal_submissions
-      WHERE id = ?
-    `).get(submissionId);
+    const submission = await ordealDatabase.getSubmissionById(submissionId);
 
     if (!submission) {
       console.error(
@@ -2931,45 +2924,11 @@ async function processOrdealReaction(reaction, user) {
         // SAVE APPROVAL DECISION
         // ----------------------------------
 
-        const saveDecision = db.transaction(() => {
-
-          const result = db.prepare(`
-            UPDATE ordeal_submissions
-            SET
-              status = ?,
-              reviewed_by = ?,
-              reviewed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-              AND status = 'pending'
-          `).run(
-            decision,
-            user.id,
-            submissionId
-          );
-
-          if (result.changes !== 1) {
-            return false;
-          }
-
-          db.prepare(`
-            INSERT INTO ordeal_audit_log (
-              submission_id,
-              moderator_id,
-              decision
-            )
-            VALUES (?, ?, ?)
-          `).run(
-            submissionId,
-            user.id,
-            decision
-          );
-
-
-
-          return true;
-        });
-
-        const decisionSaved = saveDecision();
+        const decisionSaved = await ordealDatabase.saveDecision(
+          submissionId,
+          user.id,
+          decision
+        );
 
         if (!decisionSaved) {
 
@@ -3006,43 +2965,11 @@ async function processOrdealReaction(reaction, user) {
       // SAVE REJECTION
       // ----------------------------------
 
-      const saveRejection = db.transaction(() => {
-
-        const result = db.prepare(`
-          UPDATE ordeal_submissions
-          SET
-            status = ?,
-            reviewed_by = ?,
-            reviewed_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-            AND status = 'pending'
-        `).run(
-          decision,
-          user.id,
-          submissionId
-        );
-
-        if (result.changes !== 1) {
-          return false;
-        }
-
-        db.prepare(`
-          INSERT INTO ordeal_audit_log (
-            submission_id,
-            moderator_id,
-            decision
-          )
-          VALUES (?, ?, ?)
-        `).run(
-          submissionId,
-          user.id,
-          decision
-        );
-
-        return true;
-      });
-
-      const decisionSaved = saveRejection();
+      const decisionSaved = await ordealDatabase.saveDecision(
+        submissionId,
+        user.id,
+        decision
+      );
 
       if (!decisionSaved) {
 
