@@ -82,19 +82,28 @@ async function main() {
       if (table === 'honors') {
         // Schema initialization seeds the ten standard rows. Update those
         // rows from SQLite rather than treating the seed as conflicting data.
-        for (const row of sourceRows) {
-          const columns = Object.keys(row);
-          const names = columns.map(quoteIdentifier).join(', ');
-          const placeholders = columns.map(() => '?').join(', ');
-          const updates = columns
-            .filter(column => column !== 'honor_id')
-            .map(column => `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`)
-            .join(', ');
-          await target.execute({
-            sql: `INSERT INTO ${quoted} (${names}) VALUES (${placeholders})
-                  ON CONFLICT(honor_id) DO UPDATE SET ${updates}`,
-            args: columns.map(column => row[column])
-          });
+        const tx = await target.transaction('write');
+        try {
+          for (const row of sourceRows) {
+            const columns = Object.keys(row);
+            const names = columns.map(quoteIdentifier).join(', ');
+            const placeholders = columns.map(() => '?').join(', ');
+            const updates = columns
+              .filter(column => column !== 'honor_id')
+              .map(column => `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`)
+              .join(', ');
+            await tx.execute({
+              sql: `INSERT INTO ${quoted} (${names}) VALUES (${placeholders})
+                    ON CONFLICT(honor_id) DO UPDATE SET ${updates}`,
+              args: columns.map(column => row[column])
+            });
+          }
+          await tx.commit();
+        } catch (error) {
+          await tx.rollback();
+          throw error;
+        } finally {
+          tx.close();
         }
         console.log(`Migrated ${sourceRows.length} rows from ${table}.`);
         continue;
@@ -120,21 +129,18 @@ async function main() {
         args: columns.map(column => row[column])
       }));
 
-      // Chunk the table into bounded batches. A failure aborts this table's
-      // transaction; the next run will stop if any rows have already landed.
-      const chunkSize = 250;
-      for (let offset = 0; offset < statements.length; offset += chunkSize) {
-        const chunk = statements.slice(offset, offset + chunkSize);
-        const tx = await target.transaction('write');
-        try {
-          for (const statement of chunk) await tx.execute(statement);
-          await tx.commit();
-        } catch (error) {
-          await tx.rollback();
-          throw error;
-        } finally {
-          tx.close();
-        }
+      // Keep each table atomic: if any row fails, none of that table's rows
+      // are committed. Earlier complete tables remain and require target reset
+      // before a full retry; this script deliberately never merges partial data.
+      const tx = await target.transaction('write');
+      try {
+        for (const statement of statements) await tx.execute(statement);
+        await tx.commit();
+      } catch (error) {
+        await tx.rollback();
+        throw error;
+      } finally {
+        tx.close();
       }
       console.log(`Migrated ${sourceRows.length} rows from ${table}.`);
     }
