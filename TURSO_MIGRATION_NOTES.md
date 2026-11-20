@@ -194,3 +194,19 @@ Latest foundation commits:
 - `25cd23ba3c2fe8e6fcd89a601ca8862fada4f97a` — shared async Turso database foundation.
 - `a14f41cafd0973c27af5504d442d24ba188ddcd7` — versioned core schema initializer.
 - `3b6772d4ce67c57aa3408ef6b77fb26f6e4b016d` — hardened rollback-error handling.
+
+
+### Feature schema foundation added
+
+A third support file, `feature-database-schemas.js`, has been added. It provides explicit async initializers for Trial and Honor schemas, both using the shared interactive transaction helper.
+
+- Trial tables and indexes are created without import-time side effects.
+- Honor tables, indexes, and the legacy `icon_path` column migration are created explicitly.
+- Ten default Honor rows are inserted with `INSERT OR IGNORE`, preserving existing names and order.
+- The five existing built-in icon paths are still assigned at initialization, matching current behavior.
+- The initializer is not yet called by runtime startup. Existing `trial-database.js`, `honor-database.js`, `trial.js`, `honor.js`, and `index.js` remain on the old synchronous SQLite path.
+
+Latest commit:
+- `63b92188cd1cd9e8e2fed4e7a10e823ac8abb613` — async Trial and Honor schema initialization.
+
+The foundation code is not yet validated against a live/disposable Turso database. In particular, transaction-wrapped DDL, `PRAGMA table_info`, foreign-key enforcement, and repeated initialization must be exercised before runtime adoption.
