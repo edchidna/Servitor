@@ -1743,20 +1743,12 @@ function buildOrdealReviewContainer({
   return container;
 }
 
-function buildAarApprovalResult(report, participants, reviewerId) {
+async function buildAarApprovalResult(report, participants, reviewerId) {
 
   const reportData = JSON.parse(report.report_data);
   const totalAwarded = report.total_points * participants.length;
-  const memberTotals = participants.map(participant => {
-    const scoreResult = db.prepare(`
-      SELECT COALESCE(SUM(sl.points), 0) AS total
-      FROM score_ledger sl
-      INNER JOIN reports r ON r.id = sl.report_id
-      WHERE sl.user_id = ?
-        AND r.status = 'approved'
-    `).get(participant.user_id);
-
-    const newTotal = scoreResult.total;
+  const memberTotals = await Promise.all(participants.map(async participant => {
+    const newTotal = await aarDatabase.getMemberApprovedAarTotal(participant.user_id);
     const previousTotal = newTotal - report.total_points;
 
     return (
@@ -1765,7 +1757,7 @@ function buildAarApprovalResult(report, participants, reviewerId) {
       `${formatAarPoints(newTotal)} ` +
       `(+${formatAarPoints(report.total_points)} pts)`
     );
-  });
+  }));
 
   const approvalSummary = report.game_mode === 'PVP'
     ? (
@@ -1823,14 +1815,7 @@ function buildAarApprovalResult(report, participants, reviewerId) {
 
 async function recoverPendingAarReviewUpdates() {
 
-  const pendingUpdates = db.prepare(`
-    SELECT *
-    FROM reports
-    WHERE review_update_pending = 1
-      AND review_message_id IS NOT NULL
-      AND status IN ('approved', 'rejected')
-    ORDER BY id ASC
-  `).all();
+  const pendingUpdates = await aarDatabase.getPendingReviewUpdates();
 
   if (pendingUpdates.length === 0) return;
 
@@ -1871,28 +1856,20 @@ async function recoverPendingAarReviewUpdates() {
         throw new Error('Invalid evidence metadata.');
       }
 
-      const participants = db.prepare(`
-        SELECT user_id
-        FROM report_participants
-        WHERE report_id = ?
-      `).all(report.id);
+      const participants = await aarDatabase.getReportParticipants(report.id);
 
       if (participants.length === 0) {
         throw new Error('Report has no registered participants.');
       }
 
-      const audit = db.prepare(`
-        SELECT moderator_id, decision
-        FROM audit_log
-        WHERE report_id = ?
-      `).get(report.id);
+      const audit = await aarDatabase.getReportAudit(report.id);
 
       if (!audit || audit.decision !== report.status) {
         throw new Error('Matching moderation audit record not found.');
       }
 
       const reviewResult = report.status === 'approved'
-        ? buildAarApprovalResult(
+        ? await buildAarApprovalResult(
             report,
             participants,
             audit.moderator_id
@@ -1925,20 +1902,13 @@ async function recoverPendingAarReviewUpdates() {
         }
       });
 
-      const clearRecoveryMarker = db.prepare(`
-        UPDATE reports
-        SET review_update_pending = 0
-        WHERE id = ?
-          AND status = ?
-          AND review_message_id = ?
-          AND review_update_pending = 1
-      `).run(
+      const cleared = await aarDatabase.clearRecoveryMarker(
         report.id,
         report.status,
         report.review_message_id
       );
 
-      if (clearRecoveryMarker.changes !== 1) {
+      if (cleared !== 1) {
         throw new Error(
           'Discord card was repaired, but recovery marker could not be cleared.'
         );
@@ -1974,12 +1944,7 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     throw new Error('AAR review channel is unavailable.');
   }
 
-  const report = db.prepare(`
-    SELECT *
-    FROM reports
-    WHERE id = ?
-      AND status = 'pending'
-  `).get(reportId);
+  const report = await aarDatabase.getReportById(reportId, 'pending');
 
   if (!report) {
     throw new Error(`Pending AAR report #${reportId} was not found.`);
@@ -1989,11 +1954,7 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     throw new Error(`Submitter mismatch for AAR report #${reportId}.`);
   }
 
-  const participants = db.prepare(`
-    SELECT user_id
-    FROM report_participants
-    WHERE report_id = ?
-  `).all(reportId);
+  const participants = await aarDatabase.getReportParticipants(reportId);
 
   if (participants.length === 0) {
     throw new Error(`AAR report #${reportId} has no participants.`);
@@ -2114,30 +2075,7 @@ const attachmentsMatch = evidence.length === evidenceNames.length &&
   }
 
   try {
-    const persistReviewMessage = db.transaction(() => {
-      const updateResult = db.prepare(`
-        UPDATE reports
-        SET
-          review_message_id = ?,
-          evidence = ?,
-          evidence_thread_id = NULL
-        WHERE id = ?
-          AND status = 'pending'
-          AND review_message_id IS NULL
-      `).run(
-        reviewMessage.id,
-        JSON.stringify(evidence),
-        reportId
-      );
-
-      if (updateResult.changes !== 1) {
-        throw new Error(
-          `Could not persist the review message association for report #${reportId}.`
-        );
-      }
-    });
-
-    persistReviewMessage();
+    await aarDatabase.attachReviewMessage(reportId, reviewMessage.id, evidence);
   } catch (persistError) {
     try {
       await reviewMessage.delete();
@@ -2209,11 +2147,7 @@ async function processReportReaction(reaction, user) {
       return;
     }
 
-    const mappedReport = db.prepare(`
-      SELECT *
-      FROM reports
-      WHERE review_message_id = ?
-    `).get(message.id);
+    const mappedReport = await aarDatabase.getReportByReviewMessage(message.id);
 
     let reportEmbed = null;
     let reportCategory;
@@ -2308,15 +2242,7 @@ async function processReportReaction(reaction, user) {
     // GET REPORT FROM DATABASE
     // ----------------------------------------
 
-    const report = mappedReport || db.prepare(`
-      SELECT *
-      FROM reports
-      WHERE id = ?
-        AND game_mode = ?
-    `).get(
-      reportId,
-      reportCategory
-    );
+    const report = mappedReport || await aarDatabase.getReportByIdAndMode(reportId, reportCategory);
 
     if (!report) {
       console.error(`Report #${reportId} not found in database.`);
@@ -2328,11 +2254,7 @@ async function processReportReaction(reaction, user) {
     // GET REPORT PARTICIPANTS
     // ----------------------------------------
 
-    const participants = db.prepare(`
-      SELECT user_id
-      FROM report_participants
-      WHERE report_id = ?
-    `).all(reportId);
+    const participants = await aarDatabase.getReportParticipants(reportId);
 
     if (participants.length === 0) {
       console.error(
@@ -2488,7 +2410,7 @@ WHERE id = ?
 
 
       const reviewResult = decision === 'approved'
-        ? buildAarApprovalResult(report, participants, user.id)
+        ? await buildAarApprovalResult(report, participants, user.id)
         : (
           `**Report rejected. No points awarded.**\n` +
           `Rejected by: <@${user.id}>`
