@@ -374,16 +374,16 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - `@libsql/client` is pinned to `0.18.0` in both `package.json` and `package-lock.json`.
 - GitHub Actions uses Node 22 and runs normal `npm ci` (install scripts are not disabled), `npm run check:syntax`, and `npm run test:libsql`.
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
-- The local persistence suite contains nine tests covering core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, and SQLite-to-libSQL content-digest verification.
+- The local persistence suite contains ten tests covering full SQLite-to-libSQL transfer, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, and content-digest verification.
 - If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
-- Latest verified test run before this note update: GitHub Actions run #32, commit `3f7895a177053cc9de5d8e24fecbd73a542609ff`; dependency installation, syntax validation, and all nine tests passed. Remote tests were skipped because the secrets were not configured.
+- Latest verified code test run: GitHub Actions run #36, commit `61aecf40712ae9b8f053a8842db66b703aa50131`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, and all ten persistence tests passed (10 passed, 0 failed). The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
 
 ## Foreign-key compatibility risk
 
 - The client documentation says standalone `client.execute()` calls use independent logical database connections; Turso documents foreign-key enforcement as off by default.
 - The startup PRAGMA check and local-file test do not prove that remote Turso enforces foreign keys on every standalone and transactional operation.
 - Added `test/turso-remote-foreign-key-smoke.js` and `npm run test:turso-remote-fk`. The probe creates uniquely named temporary parent/child tables in a dedicated remote test database, checks PRAGMA state across statements and a transaction, and verifies orphan inserts are rejected.
-- The full nine-test persistence suite also runs remotely when the dedicated secrets are present.
+- The full ten-test persistence suite also runs remotely when the dedicated secrets are present.
 - Remote tests are currently skipped because the required test-database secrets are absent. Treat remote foreign-key behavior as unverified and a production blocker.
 
 ## Legacy schema inventory and compatibility
@@ -411,6 +411,6 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - The migration utility verifies source and target column names, row counts, and SHA-256 digests for all transferred rows, ordered by primary key.
 - Digest normalization handles SQLite/libSQL integer, numeric, text, NULL, and BLOB representations (including Buffer, typed-array views, and ArrayBuffer).
 - Honor rows receive the same full-content verification after reconciling the target's ten seeded Honor records.
-- A local regression test confirms matching SQLite/libSQL scalar and BLOB values verify successfully and a changed target value is detected.
-- GitHub Actions run #32 passed on commit `3f7895a177053cc9de5d8e24fecbd73a542609ff`: normal `npm ci`, syntax validation, and all nine local persistence tests passed (9 passed, 0 failed; dependency audit reported 0 vulnerabilities).
+- A local regression test confirms matching SQLite/libSQL scalar and BLOB values verify successfully and a changed target value is detected. The end-to-end migration test also exercises the transfer utility against a populated SQLite fixture based on the legacy schema definitions, including representative records in all 19 tables.
+- GitHub Actions run #36 passed on commit `61aecf40712ae9b8f053a8842db66b703aa50131`: normal `npm ci`, syntax validation, and all ten local persistence tests passed (10 passed, 0 failed; dependency audit reported 0 vulnerabilities).
 - The later documentation-only run #33 is tracked separately. Remote Turso tests were skipped because the dedicated test-database secrets are not configured.
