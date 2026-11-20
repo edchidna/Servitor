@@ -378,16 +378,16 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - `@libsql/client` is pinned to `0.18.0` in both `package.json` and `package-lock.json`.
 - GitHub Actions uses Node 22 and runs normal `npm ci` (install scripts are not disabled), `npm run check:syntax`, and `npm run test:libsql`.
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
-- The local persistence suite contains 15 tests covering full SQLite-to-libSQL transfer, refusal of populated targets, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, and logical backup/restore round-trip verification. CI also runs the Operations modal workflow regression test.
-- If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
-- Latest known successful code test run: GitHub Actions run #68, commit `4f325745323a3104604767513e3d7b479bedac86`; dependency installation, syntax validation, the local persistence suite, the Operations modal regression test, and dependency audit passed (zero vulnerabilities). Remote Turso persistence and foreign-key tests were skipped because the dedicated test-database secrets were not configured. This run predates the current branch head and does not validate the latest commits. The current head's CI result remains unconfirmed.
+- The local persistence suite contains 15 tests covering SQLite-to-libSQL transfer, refusal of populated targets, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, logical backup/restore round-trip verification, and database shutdown draining. CI also runs the Operations modal workflow regression test.
+- If dedicated remote-test secrets are configured, CI also runs the full 15-test persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
+- Latest verified CI run: GitHub Actions run #93 on commit `e233f62a3685bc2016e583a66481b0f76b67fcce`. Dependency installation, syntax validation, all 15 local persistence tests, and the Operations modal regression test passed. The remote Turso persistence suite and foreign-key probe were skipped because `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` are not configured. This validates the local test environment only, not remote Turso behavior.
 
 ## Foreign-key compatibility risk
 
 - The client documentation says standalone `client.execute()` calls use independent logical database connections; Turso documents foreign-key enforcement as off by default.
 - The startup PRAGMA check and local-file test do not prove that remote Turso enforces foreign keys on every standalone and transactional operation.
 - Added `test/turso-remote-foreign-key-smoke.js` and `npm run test:turso-remote-fk`. The probe creates uniquely named temporary parent/child tables in a dedicated remote test database, checks PRAGMA state across statements and a transaction, and verifies orphan inserts are rejected.
-- The full ten-test persistence suite also runs remotely when the dedicated secrets are present.
+- The full 15-test persistence suite also runs remotely when the dedicated secrets are present.
 - Remote tests are currently skipped because the required test-database secrets are absent. Treat remote foreign-key behavior as unverified and a production blocker.
 
 ## Legacy schema inventory and compatibility
