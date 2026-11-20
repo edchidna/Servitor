@@ -249,21 +249,19 @@ async function main() {
       const sourceRows = source.prepare(`SELECT * FROM ${quoted}`).all();
 
       if (table === 'honors') {
-        // Schema initialization seeds the ten standard rows. Update those
-        // rows from SQLite rather than treating the seed as conflicting data.
+        // The target contains only the ten clean schema seeds and the
+        // honor_awards table was preflighted empty. Replace the seed rows in
+        // one transaction so custom UNIQUE display_order values cannot collide
+        // with other seed rows during sequential upserts.
         const tx = await target.transaction('write');
         try {
+          await tx.execute('DELETE FROM honors');
           for (const row of sourceRows) {
             const columns = Object.keys(row);
             const names = columns.map(quoteIdentifier).join(', ');
             const placeholders = columns.map(() => '?').join(', ');
-            const updates = columns
-              .filter(column => column !== 'honor_id')
-              .map(column => `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`)
-              .join(', ');
             await tx.execute({
-              sql: `INSERT INTO ${quoted} (${names}) VALUES (${placeholders})
-                    ON CONFLICT(honor_id) DO UPDATE SET ${updates}`,
+              sql: `INSERT INTO honors (${names}) VALUES (${placeholders})`,
               args: columns.map(column => row[column])
             });
           }
