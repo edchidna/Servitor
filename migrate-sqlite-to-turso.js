@@ -176,6 +176,18 @@ async function main() {
     // Preflight every target table before writing anything. Honors are the
     // only exception because schema initialization intentionally seeds them.
     const seededHonorIds = Array.from({ length: 10 }, (_, index) => `honor_${index + 1}`);
+    const sourceHonorIds = source.prepare(
+      'SELECT honor_id FROM honors ORDER BY honor_id'
+    ).all().map(row => row.honor_id);
+    if (
+      sourceHonorIds.length !== seededHonorIds.length ||
+      seededHonorIds.some(id => !sourceHonorIds.includes(id))
+    ) {
+      throw new Error(
+        'Source honors table does not contain exactly the ten expected permanent Honor IDs.'
+      );
+    }
+
     const targetHonorResult = await target.execute(
       'SELECT honor_id FROM honors ORDER BY honor_id'
     );
