@@ -1,7 +1,12 @@
 
 require('dotenv').config();
 
-const db = require('./database'); // Legacy SQLite remains in use for unmigrated workflows.
+const database = require('./turso-database');
+const { initializeCoreSchema } = require('./core-database-schema');
+const {
+  initializeTrialSchema,
+  initializeHonorSchema
+} = require('./feature-database-schemas');
 const aarDatabase = require('./aar-database-turso');
 const ordealDatabase = require('./ordeal-database-turso');
 const sagaDatabase = require('./saga-database-turso');
@@ -6206,8 +6211,27 @@ async function checkVeteranPromotion() {
 // CONNECT TO DISCORD
 // ==========================================
 
-client.login(process.env.DISCORD_TOKEN)
-  .catch((error) => {
-    console.error('Failed to connect to Discord:', error);
-    process.exitCode = 1;
-  });
+async function startServitor() {
+  // Database readiness is a hard startup prerequisite. Do not accept Discord
+  // interactions until every feature schema is available.
+  await database.initializeDatabase();
+  await initializeCoreSchema();
+  await initializeTrialSchema();
+  await initializeHonorSchema();
+
+  if (!process.env.DISCORD_TOKEN) {
+    throw new Error('DISCORD_TOKEN is missing from the environment.');
+  }
+
+  await client.login(process.env.DISCORD_TOKEN);
+}
+
+startServitor().catch(async error => {
+  console.error('Servitor startup failed:', error);
+  try {
+    await database.closeDatabase();
+  } catch (closeError) {
+    console.error('Database shutdown after startup failure also failed:', closeError);
+  }
+  process.exitCode = 1;
+});
