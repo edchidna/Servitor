@@ -378,7 +378,7 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - `@libsql/client` is pinned to `0.18.0` in both `package.json` and `package-lock.json`.
 - GitHub Actions uses Node 22 and runs normal `npm ci` (install scripts are not disabled), `npm run check:syntax`, and `npm run test:libsql`.
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
-- The local persistence suite contains twelve tests covering full SQLite-to-libSQL transfer, refusal of populated targets, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, and logical backup/restore round-trip verification. CI also runs the Operations modal workflow regression test.
+- The local persistence suite contains 10 tests covering full SQLite-to-libSQL transfer, refusal of populated targets, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, and logical backup/restore round-trip verification. CI also runs the Operations modal workflow regression test.
 - If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
 - Latest known successful code test run: GitHub Actions run #68, commit `4f325745323a3104604767513e3d7b479bedac86`; dependency installation, syntax validation, the local persistence suite, the Operations modal regression test, and dependency audit passed (zero vulnerabilities). Remote Turso persistence and foreign-key tests were skipped because the dedicated test-database secrets were not configured. This run predates the current branch head and does not validate the latest commits. The current head's CI result remains unconfirmed.
 
@@ -462,3 +462,12 @@ The initial static hosting findings have now been addressed on `migration/turso`
 - Startup failure now also attempts to destroy the Discord client and close both database and health-check resources.
 
 This is a source-level implementation only. It has not yet been exercised on the selected hosting provider or in a live Discord runtime. Provider-specific port binding, termination grace periods, and restart behavior still require a deployment rehearsal on a non-production test instance.
+
+
+## Database shutdown drain hardening (2026-11-21)
+
+- Shared database operations through `execute`, `batch`, and `withTransaction` are now tracked while in flight.
+- `closeDatabase()` blocks new tracked operations, waits for active tracked operations to finish, and only then closes the shared libSQL client.
+- Added a regression test that holds a transaction open, starts shutdown, verifies shutdown remains pending, releases the transaction, and confirms shutdown completes.
+- The backup, restore, and one-time transfer scripts also use the raw client directly, but they are standalone maintenance commands rather than Servitor's Discord runtime. They should be run to completion and not terminated mid-operation.
+- This is a code-level safeguard; the updated test suite still needs a successful CI run on the latest branch head, and host-level termination behavior still needs a non-production runtime rehearsal.
