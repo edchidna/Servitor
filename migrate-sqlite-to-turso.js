@@ -41,8 +41,13 @@ const TABLES_IN_INSERT_ORDER = [
 function canonicalValue(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === 'bigint') return { type: 'integer', value: value.toString() };
-  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
-    return { type: 'blob', value: Buffer.from(value).toString('base64') };
+  if (Buffer.isBuffer(value) || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return {
+      type: 'blob',
+      value: Buffer.from(
+        value instanceof ArrayBuffer ? new Uint8Array(value) : value
+      ).toString('base64')
+    };
   }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw new Error('Cannot verify a non-finite database value.');
