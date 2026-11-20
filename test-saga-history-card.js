@@ -59,9 +59,9 @@ async function main() {
   };
 
   const createSagaHistoryCard = vm.runInNewContext(
-  rendererSource + '\ncreateSagaHistoryCard',
-  sandbox
-);
+    rendererSource + '\ncreateSagaHistoryCard',
+    sandbox
+  );
 
   const honors = [
     {
@@ -88,11 +88,12 @@ async function main() {
 
   const cardBuffer = await createSagaHistoryCard({
     displayName: 'Saga History Test Member',
-    rankName: 'Great Wolf',
+    rankName: 'High Rune Priest',
+    packName: 'Stormfangs, Rune Priesthood ',
     avatarUrl: null,
     sagaPoints: 1250,
     geneSeedTotal: 12,
-    armouryDataTotal: 28,
+    armouryDataTotal: 4750,
     tenure: '1 Year, 2 Months',
     honorLayout: {
       leftColumn: honors.slice(0, 3),

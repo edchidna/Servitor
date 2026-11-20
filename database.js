@@ -149,6 +149,27 @@ if (!existingReportColumns.includes('evidence_thread_id')) {
 
 }
 
+if (!existingReportColumns.includes('review_message_id')) {
+
+  db.exec(`
+    ALTER TABLE reports
+    ADD COLUMN review_message_id TEXT
+  `);
+}
+
+if (!existingReportColumns.includes('review_update_pending')) {
+  db.exec(`
+    ALTER TABLE reports
+    ADD COLUMN review_update_pending INTEGER NOT NULL DEFAULT 0
+  `);
+}
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_review_message_id
+  ON reports(review_message_id)
+  WHERE review_message_id IS NOT NULL
+`);
+
 const ordealColumns = [
   ['game_mode', "TEXT NOT NULL DEFAULT 'Operations'"],
   ['difficulty', "TEXT NOT NULL DEFAULT 'Absolute'"],

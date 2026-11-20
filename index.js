@@ -16,6 +16,11 @@ const {
   Events,
   MessageFlags,
   EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  SeparatorBuilder,
   AttachmentBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -40,6 +45,7 @@ const SAGA_RANK_PRIORITY = [
   { id: '1570954587253506128', name: 'Hunt Master' },
   { id: '1571500983207333958', name: 'Fang-Breaker' },
   { id: '1571501284698234910', name: 'Warbringer' },
+  { id: '1572849155926261810', name: 'Lord Iron Priest' },
   { id: '1569520499246112798', name: 'Long Fang Pack-Leader' },
   { id: '1569520164087660634', name: 'Wolf Scout Pack-Leader' },
   { id: '1569520720986505287', name: 'Grey Hunter Pack-Leader' },
@@ -56,6 +62,13 @@ const SAGA_RANK_PRIORITY = [
   { id: '1569516721709252730', name: 'Grey Hunter' },
   { id: '1569516607242506381', name: 'Skyclaw' },
   { id: '1569516542742364170', name: 'Blood Claw' }
+];
+
+const SAGA_PACK_ROLES = [
+  { id: '1571691544384114858', name: 'Stormfangs' },
+  { id: '1572535320505749504', name: 'Rune Priesthood' },
+  { id: '1572535702569091192', name: 'Iron Priesthood' },
+  { id: '1571151197807845599', name: 'The Cult of Morkai' }
 ];
 
 function escapeSvgText(value) {
@@ -126,6 +139,7 @@ async function fetchSagaHistoryAvatar(avatarUrl) {
 async function createSagaHistoryCard({
   displayName,
   rankName,
+  packName,
   avatarUrl,
   sagaPoints,
   geneSeedTotal,
@@ -191,6 +205,14 @@ async function createSagaHistoryCard({
     tenure: escapeSvgText(tenure)
   };
 
+  const armouryTotal = Math.max(0, Number(armouryDataTotal) || 0);
+
+  const fangCounts = {
+    brass: Math.floor(armouryTotal / 750),
+    silver: Math.floor(armouryTotal / 1250),
+    gold: Math.floor(armouryTotal / 1750),
+    rustic: Math.floor(armouryTotal / 3000)
+  };
 
   // ==========================================
   // HONOR DISPLAY DATA
@@ -199,6 +221,99 @@ async function createSagaHistoryCard({
 
   const honorIconLayers = [];
 
+  const fangIconLayers = [];
+
+  const createFangIconLayers = async () => {
+    const path = require('path');
+    const fs = require('fs');
+
+    const fangImages = [
+      { file: 'Brass Wolf Fang.png', count: fangCounts.brass },
+      { file: 'Silver Wolf Fang.png', count: fangCounts.silver },
+      { file: 'Gold Wolf Fang.png', count: fangCounts.gold },
+      { file: 'Rustic Wolf Fang.png', count: fangCounts.rustic }
+    ];
+
+    const startX = 85;
+    const iconSize = 75;
+    const pairGap = -20;
+    const pairSpacing = -20;
+    const iconY = 875;
+
+    let currentX = startX;
+
+    for (const fang of fangImages) {
+      if (fang.count <= 0) continue;
+
+      const imagePath = path.join(
+        __dirname,
+        'assets',
+        fang.file
+      );
+
+      if (!fs.existsSync(imagePath)) {
+        console.warn(`[Saga History] Fang image unavailable: ${fang.file}`);
+        continue;
+      }
+
+      try {
+        const imageBuffer = await sharp(imagePath, {
+          limitInputPixels: 4_000_000
+        })
+          .resize(iconSize, iconSize, {
+            fit: 'contain'
+          })
+          .png()
+          .toBuffer();
+
+        fangIconLayers.push({
+          input: imageBuffer,
+          left: currentX,
+          top: iconY
+        });
+
+        const countSvg = Buffer.from(`
+        <svg xmlns="http://www.w3.org/2000/svg"
+             width="55" height="${iconSize}">
+          <text x="0" y="35"
+                fill="#f3f0e8"
+                stroke="#0a1721"
+                stroke-width="1.5"
+                stroke-linejoin="round"
+                paint-order="stroke fill"
+                font-family="Pirata One, sans-serif"
+                font-size="25"
+                font-weight="700">x${fang.count}</text>
+        </svg>
+      `);
+
+        const countBuffer = Buffer.from(
+          new Resvg(countSvg, {
+            font: {
+              fontFiles: [
+                path.join(__dirname, 'assets', 'fonts', 'PirataOne-Regular.ttf')
+              ],
+              loadSystemFonts: true
+            }
+          }).render().asPng()
+        );
+
+        fangIconLayers.push({
+          input: countBuffer,
+          left: currentX + iconSize + pairGap,
+          top: iconY
+        });
+
+        currentX += iconSize + pairGap + 55 + pairSpacing;
+
+      } catch (error) {
+        console.error(
+          `[Saga History] Could not load Fang image ${fang.file}:`,
+          error.message
+        );
+      }
+    }
+  };
   const createHonorColumnSvg = (items, x) => {
     return items.map((item, index) => {
       if (!item) return '';
@@ -289,7 +404,8 @@ async function createSagaHistoryCard({
 
   await Promise.all([
     createHonorIconLayers(honorLeftItems, 840),
-    createHonorIconLayers(honorRightItems, 1160)
+    createHonorIconLayers(honorRightItems, 1160),
+    createFangIconLayers()
   ]);
 
   const cardSvg = Buffer.from(`
@@ -318,13 +434,13 @@ async function createSagaHistoryCard({
                             stroke-width="2"
                             stroke-linejoin="round"
                             paint-order="stroke fill" font-family="Pirata One, sans-serif" font-size="31" font-weight="700" letter-spacing="3"
-                      >PACK</text>
+                      >GREAT PACK</text>
       <text x="110" y="442" fill="#f3f0e8" 
                             stroke="#0a1721"
                             stroke-width="2"
                             stroke-linejoin="round"
                             paint-order="stroke fill" font-family="Pirata One, sans-serif" font-size="49" font-weight="700"
-                      >Coming Soon</text>
+                      >${packName}</text>
 
       <text x="840" y="382" fill="#b9c5bd" 
                             stroke="#0a1721"
@@ -437,23 +553,23 @@ async function createSagaHistoryCard({
     `);
   }
 
- const cardRenderer = new Resvg(cardSvg, {
-  font: {
-    fontFiles: [
-      require('path').join(
-        __dirname,
-        'assets',
-        'fonts',
-        'PirataOne-Regular.ttf'
-      )
-    ],
-    loadSystemFonts: true
-  }
-});
+  const cardRenderer = new Resvg(cardSvg, {
+    font: {
+      fontFiles: [
+        require('path').join(
+          __dirname,
+          'assets',
+          'fonts',
+          'PirataOne-Regular.ttf'
+        )
+      ],
+      loadSystemFonts: true
+    }
+  });
 
-const cardDesign = Buffer.from(
-  cardRenderer.render().asPng()
-);
+  const cardDesign = Buffer.from(
+    cardRenderer.render().asPng()
+  );
 
   return sharp(darkenedBackground, {
     limitInputPixels: width * height
@@ -461,6 +577,7 @@ const cardDesign = Buffer.from(
     .composite([
       { input: cardDesign },
       ...honorIconLayers,
+      ...fangIconLayers,
       {
         input: circularAvatar,
         left: 76,
@@ -663,23 +780,24 @@ client.once(Events.ClientReady, async (readyClient) => {
       const members = await guild.members.fetch();
 
       const insertTenure = db.prepare(`
-        INSERT OR IGNORE INTO iron_wolves_tenure (
-          guild_id,
-          user_id,
-          assigned_at
-        )
-        VALUES (?, ?, ?)
-      `);
-
-      const initializedAt = new Date().toISOString();
+  INSERT OR REPLACE INTO iron_wolves_tenure (
+    guild_id,
+    user_id,
+    assigned_at
+  )
+  VALUES (?, ?, ?)
+`);
 
       const initializeMembers = db.transaction(() => {
         for (const member of members.values()) {
-          if (member.roles.cache.has(process.env.IRON_WOLVES_ROLE_ID)) {
+          if (
+            member.roles.cache.has(process.env.IRON_WOLVES_ROLE_ID) &&
+            member.joinedAt
+          ) {
             insertTenure.run(
               guild.id,
               member.id,
-              initializedAt
+              member.joinedAt.toISOString()
             );
           }
         }
@@ -704,7 +822,37 @@ client.once(Events.ClientReady, async (readyClient) => {
   } catch (error) {
     console.error('Failed to publish Unproven Trial panel:', error);
   }
+
+    // Automatic AAR review-card recovery.
+  let aarRecoveryRunning = false;
+
+  const runAarRecovery = async () => {
+    if (aarRecoveryRunning) return;
+
+    aarRecoveryRunning = true;
+
+    try {
+      await recoverPendingAarReviewUpdates();
+    } catch (error) {
+      console.error('[AAR Recovery] Unexpected recovery error:', error);
+    } finally {
+      aarRecoveryRunning = false;
+    }
+  };
+
+  // Run once when Servitor starts.
+  await runAarRecovery();
+
+  // Retry failed review-card updates every 5 minutes.
+  setInterval(runAarRecovery, 5 * 60 * 1000);
+
+  // Automatic Veteran promotion check.
+  await checkVeteranPromotion();
+
+  // Repeat the check every 24 hours.
+  setInterval(checkVeteranPromotion, 24 * 60 * 60 * 1000);
 });
+
 
 
 
@@ -738,24 +886,26 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     // Member receives Iron Wolves.
     if (!hadIronWolvesRole && hasIronWolvesRole) {
 
-      db.prepare(`
-        INSERT INTO iron_wolves_tenure (
-          guild_id,
-          user_id,
-          assigned_at
-        )
-        VALUES (?, ?, ?)
-        ON CONFLICT(guild_id, user_id)
-        DO UPDATE SET assigned_at = excluded.assigned_at
-      `).run(
-        newMember.guild.id,
-        newMember.id,
-        new Date().toISOString()
-      );
+      if (newMember.joinedAt) {
+        db.prepare(`
+      INSERT INTO iron_wolves_tenure (
+        guild_id,
+        user_id,
+        assigned_at
+      )
+      VALUES (?, ?, ?)
+      ON CONFLICT(guild_id, user_id)
+      DO UPDATE SET assigned_at = excluded.assigned_at
+    `).run(
+          newMember.guild.id,
+          newMember.id,
+          newMember.joinedAt.toISOString()
+        );
 
-      console.log(
-        `[Iron Wolves] Tenure started for ${newMember.user.tag}.`
-      );
+        console.log(
+          `[Iron Wolves] Tenure recorded from server join date for ${newMember.user.tag}.`
+        );
+      }
     }
 
     // Member loses Iron Wolves.
@@ -1274,6 +1424,579 @@ function createOrdealEvidenceContinueButton() {
 // REACTION-BASED APPROVAL PROCESSING
 // ==========================================
 
+function getUniqueAarEvidenceName(fileName, usedNames) {
+
+  const originalName = String(fileName || 'evidence')
+    .replace(/[\\/]/g, '_')
+    .replace(/[^a-zA-Z0-9._-]/g, '_');
+
+  const extensionIndex = originalName.lastIndexOf('.');
+  const hasExtension = extensionIndex > 0;
+
+  const baseName = hasExtension
+    ? originalName.slice(0, extensionIndex)
+    : originalName;
+
+  const extension = hasExtension
+    ? originalName.slice(extensionIndex)
+    : '';
+
+  let candidate = originalName;
+  let suffix = 2;
+
+  while (usedNames.has(candidate.toLowerCase())) {
+    candidate = `${baseName}-${suffix}${extension}`;
+    suffix += 1;
+  }
+
+  usedNames.add(candidate.toLowerCase());
+
+  return candidate;
+}
+
+async function prepareAarEvidenceFiles(uploadedFiles) {
+
+  const permanentFiles = [];
+  const evidenceNames = [];
+  const usedNames = new Set();
+
+  const uploadedFileList = Array.from(uploadedFiles.values());
+
+  if (
+    uploadedFileList.length < 1 ||
+    uploadedFileList.length > 6
+  ) {
+    throw new Error(
+      `Expected 1–6 AAR evidence files, received ${uploadedFileList.length}.`
+    );
+  }
+
+  for (const file of uploadedFileList) {
+
+    const response = await fetch(file.url);
+
+    if (!response.ok) {
+      throw new Error(`Could not download ${file.name}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const name = getUniqueAarEvidenceName(
+      file.name,
+      usedNames
+    );
+
+    permanentFiles.push(
+      new AttachmentBuilder(buffer, { name })
+    );
+
+    evidenceNames.push(name);
+  }
+
+  return {
+    permanentFiles,
+    evidenceNames
+  };
+}
+
+function formatAarPoints(value) {
+  return Number(Number(value).toFixed(2)).toString();
+}
+
+function buildAarReviewContainer({
+  report,
+  participantIds,
+  evidence,
+  reviewStatus = 'pending',
+  reviewResult = null
+}) {
+
+  const reportData = JSON.parse(report.report_data);
+  const statusLabel = reviewStatus === 'approved'
+    ? 'APPROVED'
+    : reviewStatus === 'rejected'
+      ? 'REJECTED'
+      : 'PENDING REVIEW';
+  const pointsLabel = reviewStatus === 'approved'
+    ? 'Points Awarded Per Participant'
+    : reviewStatus === 'rejected'
+      ? 'Submitted Points (Not Awarded) Per Participant'
+      : 'Provisional Points Per Participant';
+
+  const createdAt = String(report.created_at || '');
+  const createdDate = new Date(`${createdAt.replace(' ', 'T')}Z`);
+  const submittedAt = createdAt && !Number.isNaN(createdDate.getTime())
+    ? `<t:${Math.floor(createdDate.getTime() / 1000)}:F>`
+    : createdAt || 'Unknown';
+
+  let missionDetails;
+
+  if (report.game_mode === 'Operations') {
+    missionDetails = [
+      `**Operation:** ${reportData.operation}`,
+      `**Difficulty:** ${reportData.difficulty}`,
+      `**Gene Seed:** ${reportData.geneSeed}`,
+      `**Armoury Data:** ${reportData.armouryData}`,
+      `**${pointsLabel}:** ${report.total_points}`
+    ].join('\n');
+  } else if (report.game_mode === 'Stratagems') {
+    missionDetails = [
+      `**Difficulty:** ${reportData.difficulty}`,
+      `**Gene Seed:** ${reportData.geneSeed}`,
+      `**Armoury Data:** ${reportData.armouryData}`,
+      `**${pointsLabel}:** ${report.total_points}`
+    ].join('\n');
+  } else if (report.game_mode === 'Siege') {
+    const waves = Number(reportData.waves);
+    const countedWaves = Math.floor(waves / 5) * 5;
+
+    missionDetails = [
+      `**Difficulty:** ${reportData.difficulty}`,
+      `**Waves Completed:** ${waves}`,
+      `**Waves Counted for Scoring:** ${countedWaves}`,
+      `**Base Points:** ${report.base_points} pts`,
+      `**Pack Bonus:** +${report.bonus_points} pts`,
+      `**${pointsLabel}:** ${report.total_points}`
+    ].join('\n');
+  } else if (report.game_mode === 'PVP') {
+    missionDetails = [
+      `**PVP Game Mode:** ${reportData.pvpGameMode}`,
+      `**Result:** ${reportData.result}`,
+      `**${pointsLabel}:** ${report.total_points}`
+    ].join('\n');
+  } else {
+    throw new Error(`Unsupported AAR category: ${report.game_mode}`);
+  }
+
+  const evidenceItems = evidence.map((item, index) => {
+    const fileName = typeof item === 'string' ? item : item.name;
+
+    if (!fileName) {
+      throw new Error(`AAR evidence item ${index + 1} has no filename.`);
+    }
+
+    return new MediaGalleryItemBuilder()
+      .setURL(`attachment://${fileName}`)
+      .setDescription(`Original evidence ${index + 1}: ${fileName}`);
+  });
+
+  if (evidenceItems.length < 1 || evidenceItems.length > 6) {
+    throw new Error(
+      `Expected 1–6 AAR gallery items, received ${evidenceItems.length}.`
+    );
+  }
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x66583D)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# SERVITOR // AFTER ACTION REPORT\n## ${statusLabel}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Report:** ${report.game_mode} #${report.id}\n` +
+        `**Submitted:** ${submittedAt}`
+      ),
+      new TextDisplayBuilder().setContent(
+        `**Submitted by**\n<@${report.submitter_id}>`
+      ),
+      new TextDisplayBuilder().setContent(
+        `### Mission Details\n${missionDetails}`
+      ),
+      new TextDisplayBuilder().setContent(
+        `### Squad Roster (${participantIds.length}/3)\n` +
+        participantIds.map(userId => `<@${userId}>`).join('\n')
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent('### Mission Evidence')
+    )
+    .addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(evidenceItems)
+    );
+
+  if (reviewResult) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Review Result\n${reviewResult}`
+      )
+    );
+  }
+
+  return container;
+}
+
+function buildAarApprovalResult(report, participants, reviewerId) {
+
+  const reportData = JSON.parse(report.report_data);
+  const totalAwarded = report.total_points * participants.length;
+  const memberTotals = participants.map(participant => {
+    const scoreResult = db.prepare(`
+      SELECT COALESCE(SUM(sl.points), 0) AS total
+      FROM score_ledger sl
+      INNER JOIN reports r ON r.id = sl.report_id
+      WHERE sl.user_id = ?
+        AND r.status = 'approved'
+    `).get(participant.user_id);
+
+    const newTotal = scoreResult.total;
+    const previousTotal = newTotal - report.total_points;
+
+    return (
+      `<@${participant.user_id}>: ` +
+      `${formatAarPoints(previousTotal)} → ` +
+      `${formatAarPoints(newTotal)} ` +
+      `(+${formatAarPoints(report.total_points)} pts)`
+    );
+  });
+
+  const approvalSummary = report.game_mode === 'PVP'
+    ? (
+      `**Total points awarded to squad: ${formatAarPoints(totalAwarded)} AAR points.**\n` +
+      `Approved by: <@${reviewerId}>`
+    )
+    : (
+      `**${formatAarPoints(totalAwarded)} AAR points awarded ` +
+      `to ${participants.length} Brother(s).**\n` +
+      `Approved by: <@${reviewerId}>`
+    );
+
+  let scoreBreakdown;
+
+  if (report.game_mode === 'PVP') {
+    scoreBreakdown = [
+      `PVP Game Mode: ${reportData.pvpGameMode}`,
+      `Result: ${reportData.result}`,
+      `Base Points: ${formatAarPoints(report.base_points)} pts`,
+      `Pack Bonus: +${formatAarPoints(report.bonus_points)} pts`,
+      `**Total Points Per Participant: ${formatAarPoints(report.total_points)} pts**`
+    ].join('\n');
+  } else if (report.game_mode === 'Siege') {
+    const waves = Number(reportData.waves);
+    const countedWaves = Math.floor(waves / 5) * 5;
+
+    scoreBreakdown = [
+      `Difficulty: ${reportData.difficulty}`,
+      `Waves Completed: ${waves}`,
+      `Waves Counted for Scoring: ${countedWaves}`,
+      `Base Points: ${formatAarPoints(report.base_points)} pts`,
+      `Pack Bonus: +${formatAarPoints(report.bonus_points)} pts`,
+      `**Total Points: ${formatAarPoints(report.total_points)} pts**`
+    ].join('\n');
+  } else {
+    const geneSeedBonus = reportData.geneSeed === 'Yes' ? 1 : 0;
+    const armouryBonus = Number(reportData.armouryData || 0) * 0.5;
+    const squadBonus = participants.length > 1 ? 1 : 0;
+
+    scoreBreakdown = [
+      `Difficulty (${reportData.difficulty}): ${formatAarPoints(report.base_points)} pts`,
+      `Gene Seed: +${formatAarPoints(geneSeedBonus)} pts`,
+      `Armoury Data: +${formatAarPoints(armouryBonus)} pts`,
+      `Pack Bonus: +${formatAarPoints(squadBonus)} pts`,
+      `**Total: ${formatAarPoints(report.total_points)} pts**`
+    ].join('\n');
+  }
+
+  return (
+    `${approvalSummary}\n\n` +
+    `**${report.game_mode} Points Breakdown**\n${scoreBreakdown}\n\n` +
+    `**Updated AAR Totals**\n${memberTotals.join('\n')}`
+  );
+}
+
+async function recoverPendingAarReviewUpdates() {
+
+  const pendingUpdates = db.prepare(`
+    SELECT *
+    FROM reports
+    WHERE review_update_pending = 1
+      AND review_message_id IS NOT NULL
+      AND status IN ('approved', 'rejected')
+    ORDER BY id ASC
+  `).all();
+
+  if (pendingUpdates.length === 0) return;
+
+  let reviewChannel;
+
+  try {
+    reviewChannel = await client.channels.fetch(
+      process.env.REVIEW_CHANNEL_ID
+    );
+
+    if (
+      !reviewChannel ||
+      !reviewChannel.isTextBased() ||
+      !reviewChannel.isSendable()
+    ) {
+      throw new Error('AAR review channel is unavailable.');
+    }
+  } catch (error) {
+    console.error(
+      '[AAR Recovery] Could not access review channel:',
+      error
+    );
+    return;
+  }
+
+  for (const report of pendingUpdates) {
+
+    try {
+
+      const evidence = JSON.parse(report.evidence || '[]');
+
+      if (
+        !Array.isArray(evidence) ||
+        evidence.length < 1 ||
+        evidence.length > 6 ||
+        evidence.some(file => !file.id || !file.name)
+      ) {
+        throw new Error('Invalid evidence metadata.');
+      }
+
+      const participants = db.prepare(`
+        SELECT user_id
+        FROM report_participants
+        WHERE report_id = ?
+      `).all(report.id);
+
+      if (participants.length === 0) {
+        throw new Error('Report has no registered participants.');
+      }
+
+      const audit = db.prepare(`
+        SELECT moderator_id, decision
+        FROM audit_log
+        WHERE report_id = ?
+      `).get(report.id);
+
+      if (!audit || audit.decision !== report.status) {
+        throw new Error('Matching moderation audit record not found.');
+      }
+
+      const reviewResult = report.status === 'approved'
+        ? buildAarApprovalResult(
+            report,
+            participants,
+            audit.moderator_id
+          )
+        : (
+          `**Report rejected. No points awarded.**\n` +
+          `Rejected by: <@${audit.moderator_id}>`
+        );
+
+      const container = buildAarReviewContainer({
+        report,
+        participantIds: participants.map(
+          participant => participant.user_id
+        ),
+        evidence,
+        reviewStatus: report.status,
+        reviewResult
+      });
+
+      const reviewMessage = await reviewChannel.messages.fetch(
+        report.review_message_id
+      );
+
+      await reviewMessage.edit({
+        flags: MessageFlags.IsComponentsV2,
+        components: [container],
+        attachments: evidence.map(file => ({ id: file.id })),
+        allowedMentions: {
+          parse: []
+        }
+      });
+
+      const clearRecoveryMarker = db.prepare(`
+        UPDATE reports
+        SET review_update_pending = 0
+        WHERE id = ?
+          AND status = ?
+          AND review_message_id = ?
+          AND review_update_pending = 1
+      `).run(
+        report.id,
+        report.status,
+        report.review_message_id
+      );
+
+      if (clearRecoveryMarker.changes !== 1) {
+        throw new Error(
+          'Discord card was repaired, but recovery marker could not be cleared.'
+        );
+      }
+
+      console.log(
+        `[AAR Recovery] Report #${report.id} review card repaired.`
+      );
+
+    } catch (error) {
+
+      console.error(
+        `[AAR Recovery] Report #${report.id} recovery failed. ` +
+        `It will remain pending for another attempt:`,
+        error
+      );
+
+    }
+  }
+}
+
+async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
+
+  const reviewChannel = await client.channels.fetch(
+    process.env.REVIEW_CHANNEL_ID
+  );
+
+  if (
+    !reviewChannel ||
+    !reviewChannel.isTextBased() ||
+    !reviewChannel.isSendable()
+  ) {
+    throw new Error('AAR review channel is unavailable.');
+  }
+
+  const report = db.prepare(`
+    SELECT *
+    FROM reports
+    WHERE id = ?
+      AND status = 'pending'
+  `).get(reportId);
+
+  if (!report) {
+    throw new Error(`Pending AAR report #${reportId} was not found.`);
+  }
+
+  if (report.submitter_id !== submitterId) {
+    throw new Error(`Submitter mismatch for AAR report #${reportId}.`);
+  }
+
+  const participants = db.prepare(`
+    SELECT user_id
+    FROM report_participants
+    WHERE report_id = ?
+  `).all(reportId);
+
+  if (participants.length === 0) {
+    throw new Error(`AAR report #${reportId} has no participants.`);
+  }
+
+  const { permanentFiles, evidenceNames } =
+    await prepareAarEvidenceFiles(uploadedFiles);
+  const container = buildAarReviewContainer({
+    report,
+    participantIds: participants.map(participant => participant.user_id),
+    evidence: evidenceNames
+  });
+
+  const reviewMessage = await reviewChannel.send({
+    flags: MessageFlags.IsComponentsV2,
+    components: [container],
+    files: permanentFiles,
+    allowedMentions: {
+      parse: []
+    }
+  });
+
+  const evidence = reviewMessage.attachments.map(file => ({
+    id: file.id,
+    name: file.name,
+    url: file.url,
+    size: file.size,
+    contentType: file.contentType,
+    type: 'original'
+  }));
+
+  const attachmentsMatch = evidence.length === evidenceNames.length &&
+    evidence.every((file, index) => file.name === evidenceNames[index]);
+
+  if (!attachmentsMatch) {
+    try {
+      await reviewMessage.delete();
+    } catch (deleteError) {
+      console.error(
+        `Untracked AAR review message ${reviewMessage.url} could not be deleted:`,
+        deleteError
+      );
+      throw new Error(
+        `AAR review message ${reviewMessage.url} was sent, but its attachments ` +
+        'could not be verified or safely removed.'
+      );
+    }
+
+    throw new Error(
+      `AAR review message for report #${reportId} was deleted because its ` +
+      'uploaded attachments did not match the gallery references.'
+    );
+  }
+
+  try {
+    const persistReviewMessage = db.transaction(() => {
+      const updateResult = db.prepare(`
+        UPDATE reports
+        SET
+          review_message_id = ?,
+          evidence = ?,
+          evidence_thread_id = NULL
+        WHERE id = ?
+          AND status = 'pending'
+          AND review_message_id IS NULL
+      `).run(
+        reviewMessage.id,
+        JSON.stringify(evidence),
+        reportId
+      );
+
+      if (updateResult.changes !== 1) {
+        throw new Error(
+          `Could not persist the review message association for report #${reportId}.`
+        );
+      }
+    });
+
+    persistReviewMessage();
+  } catch (persistError) {
+    try {
+      await reviewMessage.delete();
+    } catch (deleteError) {
+      console.error(
+        `Untracked AAR review message ${reviewMessage.url} could not be deleted:`,
+        deleteError
+      );
+      throw new Error(
+        `AAR review message ${reviewMessage.url} was sent, but database ` +
+        `persistence failed and the message could not be deleted: ${persistError.message}`
+      );
+    }
+
+    throw new Error(
+      `AAR review message was deleted because database persistence failed: ${persistError.message}`
+    );
+  }
+
+  try {
+    await reviewMessage.react('✅');
+    await reviewMessage.react('❌');
+  } catch (reactionError) {
+    console.error(
+      `AAR report #${reportId} was saved, but review reactions could not be added:`,
+      reactionError
+    );
+    throw new Error(
+      `AAR review message ${reviewMessage.url} was saved, but the approval ` +
+      `reactions could not be added: ${reactionError.message}`
+    );
+  }
+
+  return {
+    evidenceCount: evidence.length
+  };
+}
+
 async function processReportReaction(reaction, user) {
 
   // Ignore the bot's own reactions.
@@ -1307,21 +2030,40 @@ async function processReportReaction(reaction, user) {
       return;
     }
 
-    // Identify our report by its title.
-    const reportEmbed = message.embeds[0];
+    const mappedReport = db.prepare(`
+      SELECT *
+      FROM reports
+      WHERE review_message_id = ?
+    `).get(message.id);
 
-    if (!reportEmbed || !reportEmbed.title) {
+    let reportEmbed = null;
+    let reportCategory;
+    let reportId;
+
+    if (mappedReport) {
+      reportCategory = mappedReport.game_mode;
+      reportId = mappedReport.id;
+    } else if (message.flags.has(MessageFlags.IsComponentsV2)) {
+      console.error(
+        `Components V2 AAR review message ${message.url} has no database association.`
+      );
       return;
+    } else {
+      reportEmbed = message.embeds[0];
+
+      if (!reportEmbed || !reportEmbed.title) {
+        return;
+      }
+
+      const reportMatch = reportEmbed.title.match(
+        /^(Operations|Stratagems|Siege|PVP) Report #(\d+)$/
+      );
+
+      if (!reportMatch) return;
+
+      reportCategory = reportMatch[1];
+      reportId = Number(reportMatch[2]);
     }
-
-    const reportMatch = reportEmbed.title.match(
-      /^(Operations|Stratagems|Siege|PVP) Report #(\d+)$/
-    );
-
-    if (!reportMatch) return;
-
-    const reportCategory = reportMatch[1];
-    const reportId = Number(reportMatch[2]);
 
     // Identify the reaction.
     const emoji = reaction.emoji.name;
@@ -1387,7 +2129,7 @@ async function processReportReaction(reaction, user) {
     // GET REPORT FROM DATABASE
     // ----------------------------------------
 
-    const report = db.prepare(`
+    const report = mappedReport || db.prepare(`
       SELECT *
       FROM reports
       WHERE id = ?
@@ -1446,6 +2188,26 @@ async function processReportReaction(reaction, user) {
       return;
     }
 
+    // ----------------------------------------
+    // VALIDATE V2 EVIDENCE BEFORE DECISION
+    // ----------------------------------------
+
+    let evidence = null;
+
+    if (mappedReport) {
+      evidence = JSON.parse(report.evidence || '[]');
+
+      if (
+        !Array.isArray(evidence) ||
+        evidence.length < 1 ||
+        evidence.length > 6 ||
+        evidence.some(file => !file.id || !file.name)
+      ) {
+        throw new Error(
+          `AAR report #${reportId} has invalid stored evidence metadata.`
+        );
+      }
+    }
 
     // ----------------------------------------
     // DATABASE TRANSACTION
@@ -1456,11 +2218,15 @@ async function processReportReaction(reaction, user) {
       // Update only if the report is still pending.
       const updateResult = db.prepare(`
         UPDATE reports
-        SET
-          status = ?,
-          reviewed_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-          AND status = 'pending'
+SET
+  status = ?,
+  reviewed_at = CURRENT_TIMESTAMP,
+  review_update_pending = CASE
+    WHEN review_message_id IS NOT NULL THEN 1
+    ELSE 0
+  END
+WHERE id = ?
+  AND status = 'pending'
       `).run(
         decision,
         reportId
@@ -1538,6 +2304,63 @@ async function processReportReaction(reaction, user) {
     // ----------------------------------------
     // UPDATE ORIGINAL REPORT WITH FINAL RESULT
     // ----------------------------------------
+
+    if (mappedReport) {
+
+
+      const reviewResult = decision === 'approved'
+        ? buildAarApprovalResult(report, participants, user.id)
+        : (
+          `**Report rejected. No points awarded.**\n` +
+          `Rejected by: <@${user.id}>`
+        );
+
+      const container = buildAarReviewContainer({
+        report,
+        participantIds: participants.map(participant => participant.user_id),
+        evidence,
+        reviewStatus: decision,
+        reviewResult
+      });
+
+
+      try {
+        await message.edit({
+          flags: MessageFlags.IsComponentsV2,
+          components: [container],
+          attachments: evidence.map(file => ({ id: file.id })),
+          allowedMentions: {
+            parse: []
+          }
+        });
+
+        db.prepare(`
+          UPDATE reports
+          SET review_update_pending = 0
+          WHERE id = ?
+        `).run(reportId);
+
+      } catch (editError) {
+        console.error(
+          `Review card update failed for report #${reportId}. ` +
+          `Decision is saved; recovery is pending.`,
+          editError
+        );
+      }
+
+
+      await message.reactions.removeAll().catch(error => {
+        console.error(
+          'Could not remove report reactions:',
+          error.message
+        );
+      });
+
+      console.log(
+        `Report #${reportId} ${decision} by ${user.tag}.`
+      );
+      return;
+    }
 
     const updatedEmbed = EmbedBuilder.from(reportEmbed);
 
@@ -1711,7 +2534,6 @@ async function processReportReaction(reaction, user) {
       text:
         `Space Marine 2 AAR System | ${decision.toUpperCase()} by <@${user.id}>`
     });
-
 
     // ----------------------------------------
     // UPDATE REVIEW CARD AND PRESERVE EVIDENCE
@@ -2239,25 +3061,25 @@ async function processOrdealReaction(reaction, user) {
 
     try {
 
-  const evidenceEmbeds = message.embeds
-    .slice(1)
-    .map(embed => EmbedBuilder.from(embed));
+      const evidenceEmbeds = message.embeds
+        .slice(1)
+        .map(embed => EmbedBuilder.from(embed));
 
-  await message.edit({
-    embeds: [
-      updatedEmbed,
-      ...evidenceEmbeds
-    ]
-  });
+      await message.edit({
+        embeds: [
+          updatedEmbed,
+          ...evidenceEmbeds
+        ]
+      });
 
-} catch (editError) {
+    } catch (editError) {
 
-  console.error(
-    `Could not update review card for Ordeal #${submissionId}. The database decision is already saved:`,
-    editError
-  );
+      console.error(
+        `Could not update review card for Ordeal #${submissionId}. The database decision is already saved:`,
+        editError
+      );
 
-}
+    }
 
     await message.reactions.removeAll().catch(console.error);
 
@@ -3060,6 +3882,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           member.roles.cache.has(rank.id)
         )?.name || 'Unranked';
 
+        const packName = SAGA_PACK_ROLES
+          .filter(pack => member.roles.cache.has(pack.id))
+          .map(pack => pack.name)
+          .join(', ') || 'No Pack Assigned';
+
         const sagaPoints = db.prepare(`
           SELECT COALESCE(SUM(points), 0) AS total_points
           FROM (
@@ -3215,6 +4042,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const cardBuffer = await createSagaHistoryCard({
             displayName: member.displayName,
             rankName,
+            packName,
             avatarUrl: member.displayAvatarURL({
               extension: 'png',
               size: 256
@@ -4555,45 +5383,45 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setTimestamp();
 
 
-    // ----------------------------------
-    // SEND TO ORDEAL REVIEW CHANNEL
-    // ----------------------------------
+        // ----------------------------------
+        // SEND TO ORDEAL REVIEW CHANNEL
+        // ----------------------------------
 
-reviewMessageCreationAttempted = true;
-reviewMessage = await reviewChannel.send({
-  content: `👤 <@${interaction.user.id}>`,
-  embeds: [reviewEmbed],
-  files: permanentFiles,
-  allowedMentions: {
-    parse: []
-  }
-});
+        reviewMessageCreationAttempted = true;
+        reviewMessage = await reviewChannel.send({
+          content: `👤 <@${interaction.user.id}>`,
+          embeds: [reviewEmbed],
+          files: permanentFiles,
+          allowedMentions: {
+            parse: []
+          }
+        });
 
-db.prepare(`
+        db.prepare(`
   UPDATE ordeal_submissions
   SET review_message_id = ?
   WHERE id = ?
     AND status = 'pending'
 `).run(
-  reviewMessage.id,
-  submissionId
-);
+          reviewMessage.id,
+          submissionId
+        );
 
 
-// ----------------------------------
-// SAVE EVIDENCE AND REVIEW MESSAGE
-// ----------------------------------
+        // ----------------------------------
+        // SAVE EVIDENCE AND REVIEW MESSAGE
+        // ----------------------------------
 
-const evidence = reviewMessage.attachments.map(file => ({
-  id: file.id,
-  name: file.name,
-  url: file.url,
-  size: file.size,
-  contentType: file.contentType,
-  type: 'original'
-}));
+        const evidence = reviewMessage.attachments.map(file => ({
+          id: file.id,
+          name: file.name,
+          url: file.url,
+          size: file.size,
+          contentType: file.contentType,
+          type: 'original'
+        }));
 
-db.prepare(`
+        db.prepare(`
   UPDATE ordeal_submissions
   SET
     evidence = ?,
@@ -4601,9 +5429,9 @@ db.prepare(`
   WHERE id = ?
     AND status = 'pending'
 `).run(
-  JSON.stringify(evidence),
-  submissionId
-);
+          JSON.stringify(evidence),
+          submissionId
+        );
 
 
         // ----------------------------------
@@ -5125,160 +5953,11 @@ db.prepare(`
       // ARCHIVE REPORT AND EVIDENCE
       // ====================================
 
-      let reviewMessage = null;
-
       try {
-
-        const reviewChannel = await client.channels.fetch(
-          process.env.REVIEW_CHANNEL_ID
-        );
-
-        if (
-          !reviewChannel ||
-          !reviewChannel.isTextBased() ||
-          !reviewChannel.isSendable()
-        ) {
-          throw new Error('AAR review channel is unavailable.');
-        }
-
-
-        // ----------------------------------
-        // DOWNLOAD EVIDENCE FILES
-        // ----------------------------------
-
-
-        const permanentFiles = [];
-
-        for (const file of uploadedFiles.values()) {
-
-          const response = await fetch(file.url);
-
-          if (!response.ok) {
-            throw new Error(`Could not download ${file.name}`);
-          }
-
-          const buffer = Buffer.from(
-            await response.arrayBuffer()
-          );
-
-          permanentFiles.push(
-            new AttachmentBuilder(buffer, {
-              name: file.name
-            })
-          );
-        }
-
-
-
-        // ----------------------------------
-        // GET SQUAD DISCORD TAGS
-        // ----------------------------------
-
-        const squadNames = [...participants].map(userId => {
-          return `<@${userId}>`;
-        });
-
-        // ----------------------------------
-        // CREATE REVIEW EMBED
-        // ----------------------------------
-
-        const reviewEmbed = new EmbedBuilder()
-          .setTitle(`Operations Report #${reportId}`)
-          .setDescription(
-            'New After Action Report submitted for review.'
-          )
-          .addFields(
-            {
-              name: 'Operation',
-              value: operation,
-              inline: false
-            },
-            {
-              name: 'Difficulty',
-              value: selectedDifficulty,
-              inline: false
-            },
-            {
-              name: 'Gene Seed',
-              value: geneSeed,
-              inline: false
-            },
-            {
-              name: 'Armoury Data',
-              value: String(armouryData),
-              inline: false
-            },
-            {
-              name: 'Pack Members',
-              value: squadNames.join('\n'),
-              inline: false
-            },
-            {
-              name: 'Squad Size',
-              value: `${participants.size}/3`,
-              inline: false
-            },
-            {
-              name: 'Provisional Points Per Participant',
-              value: String(totalPoints),
-              inline: false
-            },
-            {
-              name: 'Status',
-              value: 'PENDING APPROVAL',
-              inline: false
-            }
-          )
-          .setFooter({
-            text: 'Space Marine 2 AAR System | React ✅ to approve or ❌ to reject'
-          })
-          .setTimestamp();
-
-
-        // ----------------------------------
-        // SEND REPORT WITH ORIGINAL EVIDENCE
-        // ----------------------------------
-
-        reviewMessage = await reviewChannel.send({
-          content: `👤 <@${interaction.user.id}>`,
-          embeds: [reviewEmbed],
-          files: permanentFiles,
-          allowedMentions: {
-            parse: []
-          }
-        });
-
-
-        // ----------------------------------
-        // ADD APPROVAL REACTIONS
-        // ----------------------------------
-
-        await reviewMessage.react('✅');
-        await reviewMessage.react('❌');
-
-
-        // ----------------------------------
-        // SAVE ORIGINAL EVIDENCE METADATA
-        // ----------------------------------
-
-        const evidence = reviewMessage.attachments.map(file => ({
-          id: file.id,
-          name: file.name,
-          url: file.url,
-          size: file.size,
-          contentType: file.contentType,
-          type: 'original'
-        }));
-
-        db.prepare(`
-          UPDATE reports
-          SET evidence = ?,
-              evidence_thread_id = NULL
-          WHERE id = ?
-            AND status = 'pending'
-        `).run(
-          JSON.stringify(evidence),
-          reportId
+        const { evidenceCount } = await createAarReviewMessage(
+          reportId,
+          interaction.user.id,
+          uploadedFiles
         );
 
         // ----------------------------------
@@ -5290,7 +5969,7 @@ db.prepare(`
         });
 
         console.log(
-          `Operations report #${reportId} saved with ${evidence.length} evidence files.`
+          `Operations report #${reportId} saved with ${evidenceCount} evidence files.`
         );
 
       } catch (uploadError) {
@@ -5300,6 +5979,7 @@ db.prepare(`
         await interaction.editReply({
           content:
             `Your Operations report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
+            `${uploadError.message}\n\n` +
             'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
         });
       }
@@ -5481,150 +6161,18 @@ db.prepare(`
       // ====================================
 
       try {
-
-        const reviewChannel = await client.channels.fetch(
-          process.env.REVIEW_CHANNEL_ID
+        const { evidenceCount } = await createAarReviewMessage(
+          reportId,
+          interaction.user.id,
+          uploadedFiles
         );
-
-        if (
-          !reviewChannel ||
-          !reviewChannel.isTextBased() ||
-          !reviewChannel.isSendable()
-        ) {
-          throw new Error('AAR review channel is unavailable.');
-        }
-
-        // ----------------------------------
-        // DOWNLOAD EVIDENCE FILES
-        // ----------------------------------
-
-        const permanentFiles = [];
-
-        for (const file of uploadedFiles.values()) {
-
-          const response = await fetch(file.url);
-
-          if (!response.ok) {
-            throw new Error(`Could not download ${file.name}`);
-          }
-
-          const buffer = Buffer.from(
-            await response.arrayBuffer()
-          );
-
-          permanentFiles.push(
-            new AttachmentBuilder(buffer, {
-              name: file.name
-            })
-          );
-        }
-
-        // ----------------------------------
-        // CREATE EVIDENCE COLLAGE
-        // ----------------------------------
-
-        const squadNames = [...participants].map(userId =>
-          `<@${userId}>`
-        );
-
-        // ----------------------------------
-        // CREATE REVIEW EMBED
-        // ----------------------------------
-
-        const reviewEmbed = new EmbedBuilder()
-          .setTitle(`Stratagems Report #${reportId}`)
-          .setDescription(
-            'New After Action Report submitted for review.'
-          )
-          .addFields(
-            {
-              name: 'Difficulty',
-              value: difficulty,
-              inline: false
-            },
-            {
-              name: 'Gene Seed',
-              value: geneSeed,
-              inline: false
-            },
-            {
-              name: 'Armoury Data',
-              value: String(armouryData),
-              inline: false
-            },
-            {
-              name: 'Pack Members',
-              value: squadNames.join('\n'),
-              inline: false
-            },
-            {
-              name: 'Squad Size',
-              value: `${participants.size}/3`,
-              inline: false
-            },
-            {
-              name: 'Provisional Points Per Participant',
-              value: String(totalPoints),
-              inline: false
-            },
-            {
-              name: 'Status',
-              value: 'PENDING APPROVAL',
-              inline: false
-            }
-          )
-          .setFooter({
-            text: 'Space Marine 2 AAR System | React ✅ to approve or ❌ to reject'
-          })
-          .setTimestamp();
-
-
-        const reviewMessage = await reviewChannel.send({
-          content: `👤 <@${interaction.user.id}>`,
-          embeds: [reviewEmbed],
-          files: permanentFiles,
-          allowedMentions: {
-            parse: []
-          }
-        });
-
-
-
-        // ----------------------------------
-        // SAVE ORIGINAL EVIDENCE METADATA
-        // ----------------------------------
-
-        const evidence = reviewMessage.attachments.map(file => ({
-          id: file.id,
-          name: file.name,
-          url: file.url,
-          size: file.size,
-          contentType: file.contentType,
-          type: 'original'
-        }));
-
-        db.prepare(`
-          UPDATE reports
-          SET
-            evidence = ?,
-            evidence_thread_id = NULL
-          WHERE id = ?
-            AND status = 'pending'
-        `).run(
-          JSON.stringify(evidence),
-          reportId
-        );
-
-
-        await reviewMessage.react('✅');
-        await reviewMessage.react('❌');
 
         await interaction.editReply({
           content: 'Stratagems report submitted successfully.'
         });
 
         console.log(
-          `Stratagems report #${reportId} saved with ${evidence.length} evidence files.`
+          `Stratagems report #${reportId} saved with ${evidenceCount} evidence files.`
         );
 
       } catch (uploadError) {
@@ -5634,6 +6182,7 @@ db.prepare(`
         await interaction.editReply({
           content:
             `Your Stratagems report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
+            `${uploadError.message}\n\n` +
             'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
         });
       }
@@ -5785,135 +6334,18 @@ db.prepare(`
       });
 
       try {
-
-        const reviewChannel = await client.channels.fetch(
-          process.env.REVIEW_CHANNEL_ID
+        const { evidenceCount } = await createAarReviewMessage(
+          reportId,
+          interaction.user.id,
+          uploadedFiles
         );
-
-        if (
-          !reviewChannel ||
-          !reviewChannel.isTextBased() ||
-          !reviewChannel.isSendable()
-        ) {
-          throw new Error('AAR review channel is unavailable.');
-        }
-
-
-        const permanentFiles = [];
-
-        for (const file of uploadedFiles.values()) {
-
-          const response = await fetch(file.url);
-
-          if (!response.ok) {
-            throw new Error(`Could not download ${file.name}`);
-          }
-
-          const buffer = Buffer.from(
-            await response.arrayBuffer()
-          );
-
-          permanentFiles.push(
-            new AttachmentBuilder(buffer, {
-              name: file.name
-            })
-          );
-        }
-
-
-        const squadNames = [...participants].map(userId =>
-          `<@${userId}>`
-        );
-
-        const reviewEmbed = new EmbedBuilder()
-          .setTitle(`PVP Report #${reportId}`)
-          .setDescription(
-            'New After Action Report submitted for review.'
-          )
-          .addFields(
-            {
-              name: 'PVP Game Mode',
-              value: pvpGameMode,
-              inline: false
-            },
-            {
-              name: 'Result',
-              value: result,
-              inline: false
-            },
-            {
-              name: 'Pack Members',
-              value: squadNames.join('\n'),
-              inline: false
-            },
-            {
-              name: 'Squad Size',
-              value: `${participants.size}/3`,
-              inline: false
-            },
-            {
-              name: 'Provisional Points Per Participant',
-              value: String(totalPoints),
-              inline: false
-            },
-            {
-              name: 'Status',
-              value: 'PENDING APPROVAL',
-              inline: false
-            }
-          )
-          .setFooter({
-            text: 'Space Marine 2 AAR System | React ✅ to approve or ❌ to reject'
-          })
-          .setTimestamp();
-
-
-        const reviewMessage = await reviewChannel.send({
-          content: `👤 <@${interaction.user.id}>`,
-          embeds: [reviewEmbed],
-          files: permanentFiles,
-          allowedMentions: {
-            parse: []
-          }
-        });
-
-
-        await reviewMessage.react('✅');
-        await reviewMessage.react('❌');
-
-
-        // ----------------------------------
-        // SAVE ORIGINAL EVIDENCE METADATA
-        // ----------------------------------
-
-        const evidence = reviewMessage.attachments.map(file => ({
-          id: file.id,
-          name: file.name,
-          url: file.url,
-          size: file.size,
-          contentType: file.contentType,
-          type: 'original'
-        }));
-
-        db.prepare(`
-          UPDATE reports
-          SET
-            evidence = ?,
-            evidence_thread_id = NULL
-          WHERE id = ?
-            AND status = 'pending'
-        `).run(
-          JSON.stringify(evidence),
-          reportId
-        );
-
 
         await interaction.editReply({
           content: 'PVP report submitted successfully.'
         });
 
         console.log(
-          `PVP report #${reportId} saved with ${evidence.length} evidence files.`
+          `PVP report #${reportId} saved with ${evidenceCount} evidence files.`
         );
 
       } catch (uploadError) {
@@ -5923,6 +6355,7 @@ db.prepare(`
         await interaction.editReply({
           content:
             `Your PVP report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
+            `${uploadError.message}\n\n` +
             'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
         });
       }
@@ -6115,154 +6548,18 @@ db.prepare(`
       // ====================================
 
       try {
-
-        const reviewChannel = await client.channels.fetch(
-          process.env.REVIEW_CHANNEL_ID
+        const { evidenceCount } = await createAarReviewMessage(
+          reportId,
+          interaction.user.id,
+          uploadedFiles
         );
-
-        if (
-          !reviewChannel ||
-          !reviewChannel.isTextBased() ||
-          !reviewChannel.isSendable()
-        ) {
-          throw new Error('AAR review channel is unavailable.');
-        }
-
-        // ----------------------------------
-        // DOWNLOAD EVIDENCE FILES
-        // ----------------------------------
-
-
-        const permanentFiles = [];
-
-        for (const file of uploadedFiles.values()) {
-
-          const response = await fetch(file.url);
-
-          if (!response.ok) {
-            throw new Error(`Could not download ${file.name}`);
-          }
-
-          const buffer = Buffer.from(
-            await response.arrayBuffer()
-          );
-
-          permanentFiles.push(
-            new AttachmentBuilder(buffer, {
-              name: file.name
-            })
-          );
-        }
-
-
-        // ----------------------------------
-        // CREATE REVIEW EMBED
-        // ----------------------------------
-
-        const reviewEmbed = new EmbedBuilder()
-          .setTitle(`Siege Report #${reportId}`)
-          .setDescription(
-            'New After Action Report submitted for review.'
-          )
-          .addFields(
-            {
-              name: 'Difficulty',
-              value: difficulty,
-              inline: false
-            },
-            {
-              name: 'Waves Completed',
-              value: String(waves),
-              inline: false
-            },
-            {
-              name: 'Waves Counted for Scoring',
-              value: String(countedWaves),
-              inline: false
-            },
-            {
-              name: 'Pack Members',
-              value: squadNames.join('\n'),
-              inline: false
-            },
-            {
-              name: 'Squad Size',
-              value: `${participants.size}/3`,
-              inline: false
-            },
-            {
-              name: 'Base Points',
-              value: String(basePoints),
-              inline: false
-            },
-            {
-              name: 'Pack Bonus',
-              value: `+${squadBonus}`,
-              inline: false
-            },
-            {
-              name: 'Provisional Total Points Per Participant',
-              value: String(totalPoints),
-              inline: false
-            },
-            {
-              name: 'Status',
-              value: 'PENDING APPROVAL',
-              inline: false
-            }
-          )
-          .setFooter({
-            text: 'Space Marine 2 AAR System | React ✅ to approve or ❌ to reject'
-          })
-          .setTimestamp();
-
-
-        const reviewMessage = await reviewChannel.send({
-          content: `👤 <@${interaction.user.id}>`,
-          embeds: [reviewEmbed],
-          files: permanentFiles,
-          allowedMentions: {
-            parse: []
-          }
-        });
-
-
-        // ----------------------------------
-        // SAVE ORIGINAL EVIDENCE METADATA
-        // ----------------------------------
-
-        const evidence = reviewMessage.attachments.map(file => ({
-          id: file.id,
-          name: file.name,
-          url: file.url,
-          size: file.size,
-          contentType: file.contentType,
-          type: 'original'
-        }));
-
-        db.prepare(`
-          UPDATE reports
-          SET
-            evidence = ?,
-            evidence_thread_id = NULL
-          WHERE id = ?
-            AND status = 'pending'
-        `).run(
-          JSON.stringify(evidence),
-          reportId
-        );
-
-
-        await reviewMessage.react('✅');
-        await reviewMessage.react('❌');
-
 
         await interaction.editReply({
           content: 'Siege report submitted successfully.'
         });
 
         console.log(
-          `Siege report #${reportId} saved with ${evidence.length} evidence files.`
+          `Siege report #${reportId} saved with ${evidenceCount} evidence files.`
         );
 
       } catch (uploadError) {
@@ -6272,6 +6569,7 @@ db.prepare(`
         await interaction.editReply({
           content:
             `Your Siege report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
+            `${uploadError.message}\n\n` +
             'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
         });
       }
@@ -6303,6 +6601,46 @@ db.prepare(`
 client.on(Events.Error, (error) => {
   console.error('Discord client error:', error);
 });
+
+// ==========================================
+// IRON WOLVES VETERAN PROMOTION
+// ==========================================
+
+const VETERAN_ROLE_ID = '1570673903364476928';
+const VETERAN_TENURE_DAYS = 28;
+
+async function checkVeteranPromotion() {
+  try {
+    for (const guild of client.guilds.cache.values()) {
+      const members = await guild.members.fetch();
+
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+
+        // Skip members who already have Veteran.
+        if (member.roles.cache.has(VETERAN_ROLE_ID)) continue;
+
+        // Check actual server tenure.
+        if (!member.joinedAt) continue;
+
+        const tenureDays = Math.floor(
+          (Date.now() - member.joinedAt.getTime()) /
+          (1000 * 60 * 60 * 24)
+        );
+
+        if (tenureDays >= VETERAN_TENURE_DAYS) {
+          await member.roles.add(VETERAN_ROLE_ID);
+
+          console.log(
+            `[Veteran] Assigned to ${member.user.tag} (${tenureDays} days).`
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Veteran] Promotion check failed:', error);
+  }
+}
 
 // ==========================================
 // CONNECT TO DISCORD
