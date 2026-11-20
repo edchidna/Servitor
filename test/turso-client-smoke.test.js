@@ -8,9 +8,22 @@ const { after, before, test } = require('node:test');
 
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'servitor-libsql-'));
 const databasePath = path.join(tempDirectory, 'servitor-smoke.db');
-process.env.TURSO_DATABASE_URL = `file:${databasePath}`;
-delete process.env.TURSO_AUTH_TOKEN;
+const remoteTestUrl = process.env.TURSO_TEST_DATABASE_URL;
+const remoteTestToken = process.env.TURSO_TEST_AUTH_TOKEN;
+const usingRemoteTestDatabase = Boolean(remoteTestUrl);
 
+if (usingRemoteTestDatabase) {
+  if (!remoteTestToken) {
+    throw new Error('TURSO_TEST_AUTH_TOKEN is required with TURSO_TEST_DATABASE_URL.');
+  }
+  process.env.TURSO_DATABASE_URL = remoteTestUrl;
+  process.env.TURSO_AUTH_TOKEN = remoteTestToken;
+} else {
+  process.env.TURSO_DATABASE_URL = `file:${databasePath}`;
+  delete process.env.TURSO_AUTH_TOKEN;
+}
+
+let ownsRemoteTestDatabase = false;
 const database = require('../turso-database');
 const { initializeCoreSchema } = require('../core-database-schema');
 const {
@@ -21,14 +34,58 @@ const aarDatabase = require('../aar-database-turso');
 
 before(async () => {
   await database.initializeDatabase();
+
+  if (usingRemoteTestDatabase) {
+    const existingTables = await database.execute(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    `);
+    if (existingTables.rows.length > 0) {
+      throw new Error(
+        'Remote smoke tests require a dedicated empty Turso database. Refusing to touch existing tables.'
+      );
+    }
+    ownsRemoteTestDatabase = true;
+  }
+
   await initializeCoreSchema();
   await initializeTrialSchema();
   await initializeHonorSchema();
 });
 
 after(async () => {
-  await database.closeDatabase();
-  fs.rmSync(tempDirectory, { recursive: true, force: true });
+  try {
+    if (usingRemoteTestDatabase && ownsRemoteTestDatabase) {
+      const tablesInDropOrder = [
+        'trial_audit_log',
+        'trial_score_ledger',
+        'trial_progress',
+        'trial_pack_members',
+        'trial_completers',
+        'honor_awards',
+        'honor_settings',
+        'ordeal_audit_log',
+        'ordeal_score_ledger',
+        'report_participants',
+        'score_ledger',
+        'audit_log',
+        'saga_point_adjustments',
+        'ordeal_submissions',
+        'trial_submissions',
+        'honors',
+        'bot_settings',
+        'iron_wolves_tenure',
+        'reports',
+        'servitor_schema_migrations'
+      ];
+      for (const table of tablesInDropOrder) {
+        await database.execute(`DROP TABLE IF EXISTS "${table}"`);
+      }
+    }
+  } finally {
+    await database.closeDatabase();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  }
 });
 
 test('all core and feature schemas initialize and expose expected tables', async () => {
