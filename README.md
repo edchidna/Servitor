@@ -650,6 +650,23 @@ Important persistence notes:
 
 Database initialization and migrations run through the database modules when the bot starts.
 
+### Turso logical backup and restore (migration branch)
+
+Create a logical JSON backup:
+
+```powershell
+npm.cmd run backup
+```
+
+Restore into a **clean, dedicated target database** after configuring its `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the environment:
+
+```powershell
+$env:BACKUP_FILE = "backups\\servitor-turso-backup-YYYY-MM-DDTHH-MM-SS-sssZ.json"
+npm.cmd run restore
+```
+
+The restore command refuses to merge into non-empty application tables and verifies every restored table's row count and content digest. Test recovery on a disposable database first. The JSON backup is a logical data export, not a byte-for-byte database image. Keep backup copies outside the bot host and never point a restore at production unless you have explicitly planned and approved that recovery.
+
 The production Servitor setup is intended to begin with a fresh database. Do not copy development or test database files into production unless a deliberate migration has been planned and approved.
 
 ## Testing
