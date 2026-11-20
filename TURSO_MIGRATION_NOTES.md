@@ -68,3 +68,42 @@ The migration must:
 - `TURSO_AUTH_TOKEN`
 
 The precise client configuration and transaction API must be finalized before implementation; don't assume remote transactions are interchangeable with the existing synchronous transaction callbacks.
+
+## Additional audit findings (continued)
+
+### Core database initialization
+
+- The main database module performs startup DDL and data normalization synchronously before exporting the database object.
+- Startup schema evolution currently depends on `PRAGMA table_info(...)`, conditional `ALTER TABLE`, WAL mode, and foreign-key PRAGMA settings. The Turso initialization path must replace this with a deliberate schema-version/migration mechanism; it must not simply copy the PRAGMA calls.
+- `trial-database.js` and `honor-database.js` initialize their own tables at module load by importing the shared database object. The replacement must provide one awaited initialization promise that completes before Discord event handlers can access the database.
+
+### Transaction boundaries confirmed
+
+- **AAR submission:** report row and all participant rows are inserted in one transaction for each report type (Operations, Stratagems, PVP, Siege).
+- **AAR review:** pending-only status update, approved score-ledger inserts, and audit-log insert are one transaction. This is a critical exactly-once boundary.
+- **AAR review message association:** message ID and evidence metadata are persisted together, and the Discord message is deleted if persistence fails.
+- **Ordeal review:** submission status and audit entry are committed together. On approval, Discord reward roles are assigned before the DB decision; if the DB decision fails, newly assigned roles are removed. This cross-system compensation behavior must remain.
+- **Trial submission:** submission, completer rows, and pack-member rows are committed together.
+- **Trial review:** pending-only status transition, progression rows, pack-member review statuses, Trial score ledger, and audit entry are committed together.
+- **Trial pending deletion:** status check and deletion of dependent completer/pack-member/submission rows are committed together.
+- **Manual Saga adjustment:** balance calculation and adjustment insert are currently in one transaction. Concurrency behavior must be reviewed carefully because multiple concurrent adjustments can otherwise read the same balance.
+
+### Async call-graph consequences
+
+- The AAR approval receipt builder currently performs synchronous score queries and is called from review and recovery paths. It must become async and all call sites must await it.
+- The leaderboard score getter is synchronous today, but its caller is already async; it can be converted with limited caller impact.
+- Trial database exports are synchronous and consumed throughout `trial.js`; each consumer must be traced and awaited, not only the database module converted.
+- Honor database exports are synchronous and consumed from command handlers and Saga History rendering; these callers must be converted too.
+- Startup event registration must be gated behind awaited DB initialization so the bot cannot process interactions while migrations are incomplete.
+
+### Important design choice still pending
+
+Use a single shared `@libsql/client` instance. For short, fixed SQL groups, use libSQL atomic batch operations where they can faithfully express the current transaction. For conditional workflows that need results from earlier statements (e.g. reading current status and then deciding whether to write ledger entries), use an interactive write transaction with explicit commit/rollback and guaranteed close in `finally`. Do not emulate a transaction with unrelated `execute()` calls.
+
+### Migration acceptance checks
+
+- Compare table names, columns, indexes, row counts, and representative records between the source SQLite DB and the Turso destination before cutover.
+- Confirm integer IDs and `lastInsertRowid` handling are normalized safely from libSQL result types.
+- Confirm `rowsAffected`/change counts are normalized to numbers and preserve existing `changes === 1` guards.
+- Test uniqueness constraints, foreign keys, and rollback behavior against a disposable Turso database.
+- Keep all existing JSON evidence and report payloads intact; do not reinterpret or regenerate their contents.
