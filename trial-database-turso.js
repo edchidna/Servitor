@@ -26,17 +26,71 @@ function parseJsonArray(value, fieldName) {
   }
 }
 
-function serializeJson(value, fieldName) {
-  if (!Array.isArray(value)) {
-    throw new TypeError(`${fieldName} must be an array.`);
+function assertJsonSafe(value, fieldName, ancestors = new Set(), valuePath = fieldName) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError(`${valuePath} must be a finite number.`);
+    return;
   }
+
+  if (typeof value !== 'object') {
+    throw new TypeError(`${valuePath} is not a JSON-safe value.`);
+  }
+  if (ancestors.has(value)) {
+    throw new TypeError(`${valuePath} contains a circular reference.`);
+  }
+
+  const isArray = Array.isArray(value);
+  const prototype = Object.getPrototypeOf(value);
+  if (!isArray && prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${valuePath} must contain only plain objects.`);
+  }
+
+  ancestors.add(value);
+  try {
+    const ownKeys = Reflect.ownKeys(value);
+    for (const key of ownKeys) {
+      if (typeof key === 'symbol') {
+        throw new TypeError(`${valuePath} cannot contain symbol keys.`);
+      }
+      if (isArray && key !== 'length') {
+        const index = Number(key);
+        if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+          throw new TypeError(`${valuePath} cannot contain non-index array properties.`);
+        }
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        throw new TypeError(`${valuePath}.${key} must be an enumerable data property.`);
+      }
+      assertJsonSafe(descriptor.value, fieldName, ancestors, `${valuePath}.${key}`);
+    }
+    if (isArray && ownKeys.filter(key => key !== 'length').length !== value.length) {
+      throw new TypeError(`${valuePath} cannot contain sparse array entries.`);
+    }
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function serializeJson(value, fieldName) {
+  if (!Array.isArray(value)) throw new TypeError(`${fieldName} must be an array.`);
+  assertJsonSafe(value, fieldName);
+
   let serialized;
   try {
     serialized = JSON.stringify(value);
-    if (typeof serialized !== 'string') throw new TypeError('Not serializable.');
-    JSON.parse(serialized);
   } catch (error) {
     throw new TypeError(`${fieldName} must contain valid JSON data.`, { cause: error });
+  }
+  if (typeof serialized !== 'string') {
+    throw new TypeError(`${fieldName} must contain valid JSON data.`);
+  }
+  try {
+    JSON.parse(serialized);
+  } catch (error) {
+    throw new TypeError(`${fieldName} could not be serialized as valid JSON.`, { cause: error });
   }
   return serialized;
 }
