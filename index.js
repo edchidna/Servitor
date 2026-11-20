@@ -2314,71 +2314,13 @@ async function processReportReaction(reaction, user) {
     // DATABASE TRANSACTION
     // ----------------------------------------
 
-    const saveDecision = db.transaction(() => {
-
-      // Update only if the report is still pending.
-      const updateResult = db.prepare(`
-        UPDATE reports
-SET
-  status = ?,
-  reviewed_at = CURRENT_TIMESTAMP,
-  review_update_pending = CASE
-    WHEN review_message_id IS NOT NULL THEN 1
-    ELSE 0
-  END
-WHERE id = ?
-  AND status = 'pending'
-      `).run(
-        decision,
-        reportId
-      );
-
-      // Prevent duplicate decisions.
-      if (updateResult.changes !== 1) {
-        return false;
-      }
-
-      // Award points only when approved.
-      if (decision === 'approved') {
-
-        const insertScore = db.prepare(`
-          INSERT INTO score_ledger (
-            report_id,
-            user_id,
-            points
-          )
-          VALUES (?, ?, ?)
-        `);
-
-        for (const participant of participants) {
-          insertScore.run(
-            reportId,
-            participant.user_id,
-            report.total_points
-          );
-        }
-      }
-
-      // Record the moderator's decision.
-      db.prepare(`
-        INSERT INTO audit_log (
-          report_id,
-          moderator_id,
-          decision,
-          reason
-        )
-        VALUES (?, ?, ?, ?)
-      `).run(
-        reportId,
-        user.id,
-        decision,
-        null
-      );
-
-      return true;
-    });
-
-    const decisionSaved = saveDecision();
+    const decisionSaved = await aarDatabase.saveAarDecision(
+      reportId,
+      decision,
+      user.id,
+      participants,
+      report.total_points
+    );
 
     if (!decisionSaved) {
 
@@ -2435,11 +2377,7 @@ WHERE id = ?
           }
         });
 
-        db.prepare(`
-          UPDATE reports
-          SET review_update_pending = 0
-          WHERE id = ?
-        `).run(reportId);
+        await aarDatabase.clearRecoveryMarker(reportId, decision);
 
       } catch (editError) {
         console.error(
@@ -2499,17 +2437,8 @@ WHERE id = ?
       const formatPoints = value =>
         Number(value.toFixed(2)).toString();
 
-      const memberTotals = participants.map(participant => {
-        const scoreResult = db.prepare(`
-            SELECT COALESCE(SUM(sl.points), 0) AS total
-            FROM score_ledger sl
-            INNER JOIN reports r
-            ON r.id = sl.report_id
-            WHERE sl.user_id = ?
-            AND r.status = 'approved'
-         `).get(participant.user_id);
-
-        const newTotal = scoreResult.total;
+      const memberTotals = await Promise.all(participants.map(async participant => {
+        const newTotal = await aarDatabase.getMemberApprovedAarTotal(participant.user_id);
 
         const previousTotal =
           newTotal - report.total_points;
@@ -2521,7 +2450,7 @@ WHERE id = ?
           `(+${formatPoints(report.total_points)} pts)`
         );
 
-      });
+      }));
 
       const approvalField = {
         name: 'AAR Approval',
