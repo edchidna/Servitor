@@ -374,9 +374,9 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - `@libsql/client` is pinned to `0.18.0` in both `package.json` and `package-lock.json`.
 - GitHub Actions uses Node 22 and runs normal `npm ci` (install scripts are not disabled), `npm run check:syntax`, and `npm run test:libsql`.
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
-- The local persistence suite contains ten tests covering full SQLite-to-libSQL transfer, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, and content-digest verification.
+- The local persistence suite contains ten tests covering full SQLite-to-libSQL transfer, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, and logical backup/restore round-trip verification. CI also runs the Operations modal workflow regression test.
 - If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
-- Latest verified code test run: GitHub Actions run #43, commit `ed6279e39fa2f1f65cbee24128d20cccab01f810`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, a logical backup/restore round trip, and all ten persistence tests passed (10 passed, 0 failed). The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
+- Latest verified code test run: GitHub Actions run #54, commit `3d1897efbfad6028c1163343c255b641686fde1d`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, a logical backup/restore round trip, all ten persistence tests, and the Operations modal regression test passed. The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
 
 ## Foreign-key compatibility risk
 
@@ -395,14 +395,14 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 
 ## Transfer utility safeguards
 
-- Before importing, the transfer utility verifies SQLite `integrity_check`, requires all expected legacy tables, validates the ten permanent Honor IDs, checks target table emptiness, compares source/target column names, and requires primary keys for deterministic verification.
+- Before importing, the transfer utility verifies SQLite `integrity_check` and `foreign_key_check`, requires all expected legacy tables, validates the ten permanent Honor IDs and untouched target Honor seeds, checks target table emptiness, compares source/target column names, and requires primary keys for deterministic verification.
 - Each table import is transactional. A failure after earlier tables committed requires resetting the disposable target before retrying.
 - After each table import, source and target rows are ordered by primary key and compared using SHA-256 digests. The comparison normalizes numeric, text, NULL, and BLOB values.
 - This has been tested with a local SQLite/libSQL fixture, but not yet against the actual production database copy.
 
 ## Native dependency and workflow permissions
 
-- CI uses ordinary `npm ci`, so native dependency installation is exercised on the Ubuntu/Node 22 runner. Host-specific compatibility remains unverified.
+- CI uses ordinary `npm ci`, so native dependency installation is exercised on the Ubuntu/Node 22 runner. It also runs the Operations modal regression test against the async AAR persistence path. Host-specific compatibility remains unverified.
 - The migration validation workflow has only `contents: read` permission. It does not commit files, write to branches, or deploy.
 - The workflow is scoped to `migration/turso`; `main` remains untouched.
 
