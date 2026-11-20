@@ -119,7 +119,18 @@ async function verifyRestoredTable(target, table, backupRows, columns) {
     );
   }
 
-  const expectedDigest = rowsDigest(backupRows, names);
+  const sortedBackupRows = [...backupRows].sort((left, right) => {
+    for (const columnName of primaryKey) {
+      const a = left[columnName];
+      const b = right[columnName];
+      if (a === b) continue;
+      if (a === null || a === undefined) return -1;
+      if (b === null || b === undefined) return 1;
+      return a < b ? -1 : 1;
+    }
+    return 0;
+  });
+  const expectedDigest = rowsDigest(sortedBackupRows, names);
   const actualDigest = rowsDigest(result.rows, names);
   if (expectedDigest !== actualDigest) {
     throw new Error(`Restore content verification failed for ${table}.`);
