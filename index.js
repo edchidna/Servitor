@@ -5,6 +5,7 @@ const db = require('./database'); // Legacy SQLite remains in use for unmigrated
 const aarDatabase = require('./aar-database-turso');
 const ordealDatabase = require('./ordeal-database-turso');
 const sagaDatabase = require('./saga-database-turso');
+const memberDatabase = require('./member-database-turso');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
 const { Resvg } = require('@resvg/resvg-js');
@@ -782,31 +783,11 @@ client.once(Events.ClientReady, async (readyClient) => {
 
       const members = await guild.members.fetch();
 
-      const insertTenure = db.prepare(`
-  INSERT OR REPLACE INTO iron_wolves_tenure (
-    guild_id,
-    user_id,
-    assigned_at
-  )
-  VALUES (?, ?, ?)
-`);
-
-      const initializeMembers = db.transaction(() => {
-        for (const member of members.values()) {
-          if (
-            member.roles.cache.has(process.env.IRON_WOLVES_ROLE_ID) &&
-            member.joinedAt
-          ) {
-            insertTenure.run(
-              guild.id,
-              member.id,
-              member.joinedAt.toISOString()
-            );
-          }
-        }
-      });
-
-      initializeMembers();
+      await memberDatabase.initializeTenureMembers(
+        guild.id,
+        members.values(),
+        process.env.IRON_WOLVES_ROLE_ID
+      );
 
       console.log(
         `[Iron Wolves] Existing member initialization completed in ${guild.name}.`
@@ -890,16 +871,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     if (!hadIronWolvesRole && hasIronWolvesRole) {
 
       if (newMember.joinedAt) {
-        db.prepare(`
-      INSERT INTO iron_wolves_tenure (
-        guild_id,
-        user_id,
-        assigned_at
-      )
-      VALUES (?, ?, ?)
-      ON CONFLICT(guild_id, user_id)
-      DO UPDATE SET assigned_at = excluded.assigned_at
-    `).run(
+        await memberDatabase.setTenure(
           newMember.guild.id,
           newMember.id,
           newMember.joinedAt.toISOString()
@@ -914,13 +886,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     // Member loses Iron Wolves.
     if (hadIronWolvesRole && !hasIronWolvesRole) {
 
-      db.prepare(`
-        DELETE FROM iron_wolves_tenure
-        WHERE guild_id = ? AND user_id = ?
-      `).run(
-        newMember.guild.id,
-        newMember.id
-      );
+      await memberDatabase.clearTenure(newMember.guild.id, newMember.id);
 
       console.log(
         `[Iron Wolves] Tenure record reset for ${newMember.user.tag}.`
@@ -942,13 +908,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 client.on(Events.GuildMemberRemove, async (member) => {
   try {
 
-    db.prepare(`
-      DELETE FROM iron_wolves_tenure
-      WHERE guild_id = ? AND user_id = ?
-    `).run(
-      member.guild.id,
-      member.id
-    );
+    await memberDatabase.clearTenure(member.guild.id, member.id);
 
     console.log(
       `[Iron Wolves] Tenure record cleared for departing member ${member.user.tag}.`
@@ -3770,54 +3730,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .map(pack => pack.name)
           .join(', ') || 'No Pack Assigned';
 
-        const sagaPoints = db.prepare(`
-          SELECT COALESCE(SUM(points), 0) AS total_points
-          FROM (
-            -- Approved AAR reports
-            SELECT sl.points
-            FROM score_ledger sl
-            INNER JOIN reports r
-              ON r.id = sl.report_id
-            WHERE r.status = 'approved'
-              AND sl.user_id = ?
-
-            UNION ALL
-
-            -- Approved Unproven Trial submissions
-            SELECT tsl.points
-            FROM trial_score_ledger tsl
-            INNER JOIN trial_submissions ts
-              ON ts.id = tsl.submission_id
-            WHERE ts.status = 'approved'
-              AND tsl.user_id = ?
-
-            UNION ALL
-
-            -- Manual Saga Point adjustments
-            SELECT spa.points_delta AS points
-            FROM saga_point_adjustments spa
-            WHERE spa.guild_id = ?
-              AND spa.user_id = ?
-          )
-        `).get(
-          selectedUser.id,
-          selectedUser.id,
+        const sagaPoints = await sagaDatabase.getSagaPoints(
           interaction.guild.id,
           selectedUser.id
-        ).total_points;
+        );
 
         let geneSeedTotal = 0;
         let armouryDataTotal = 0;
 
-        const approvedRegularReports = db.prepare(`
-          SELECT r.report_data
-          FROM reports r
-          INNER JOIN report_participants rp
-            ON rp.report_id = r.id
-          WHERE rp.user_id = ?
-            AND r.status = 'approved'
-            AND r.game_mode IN ('Operations', 'Stratagems')
-        `).all(selectedUser.id);
+        const approvedRegularReports = await sagaDatabase.getApprovedRegularReports(
+          selectedUser.id
+        );
 
         for (const report of approvedRegularReports) {
           let reportData;
@@ -3850,11 +3773,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         }
 
-        const approvedOrdeals = db.prepare(`
-          SELECT participants, gene_seed, armoury_data
-          FROM ordeal_submissions
-          WHERE status = 'approved'
-        `).all();
+        const approvedOrdeals = await sagaDatabase.getApprovedOrdeals();
 
         for (const ordeal of approvedOrdeals) {
           let participants;
@@ -3887,11 +3806,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         let tenure = 'Unknown';
 
-        const tenureRecord = db.prepare(`
-            SELECT assigned_at
-            FROM iron_wolves_tenure
-            WHERE guild_id = ? AND user_id = ?
-       `).get(
+        const tenureRecord = await memberDatabase.getTenure(
           interaction.guild.id,
           member.id
         );
