@@ -8,7 +8,7 @@
 require('dotenv').config();
 const path = require('node:path');
 const Database = require('better-sqlite3');
-const { createClient } = require('@libsql/client');
+const database = require('./turso-database');
 const { initializeCoreSchema } = require('./core-database-schema');
 const {
   initializeTrialSchema,
@@ -57,10 +57,8 @@ async function main() {
   }
 
   const source = new Database(sourcePath, { readonly: true, fileMustExist: true });
-  const target = createClient({
-    url,
-    ...(url.startsWith('file:') ? {} : { authToken })
-  });
+  await database.initializeDatabase();
+  const target = database.getClient();
 
   try {
     await target.execute('PRAGMA foreign_keys = ON');
@@ -144,7 +142,7 @@ async function main() {
     console.log('SQLite to Turso transfer completed. Verify row counts before switching the bot.');
   } finally {
     source.close();
-    target.close();
+    await database.closeDatabase();
   }
 }
 
