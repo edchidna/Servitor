@@ -120,3 +120,21 @@ Use a single shared `@libsql/client` instance. For short, fixed SQL groups, use 
 - The only committed change on `migration/turso` so far is this audit document.
 - No application JavaScript or package dependency has been modified yet.
 - The latest audit commit is documentation-only. It is not deployable and must not be used to start the bot as a Turso build.
+
+### Startup and nested async dependency findings
+
+- `index.js` imports `database.js`, `trial.js`, and `honor.js` at module load. `trial.js` imports `trial-database.js`, which imports the shared database and creates Trial tables immediately; `honor-database.js` similarly creates Honor tables and seeds/updates initial Honor records during import.
+- This import-time initialization model must be removed or refactored for Turso. A safe startup entry point should explicitly await shared-client creation and all schema initialization before registering/activating Discord event handling and background work. Merely awaiting the core schema is insufficient if Trial and Honor initialization remains implicit.
+- `trial.js` has synchronous database calls inside helper functions as well as command handlers. In particular, `getTrialCompleterProgress()` maps over completers and calls `getMemberTrialProgress()`; this helper must become async and await its per-member reads before the review container is built.
+- Confirmed Trial call-site consequences include awaiting submission creation, progression reads, Discord-reference persistence, pending-submission cleanup, submission lookup, review decisions, reaction-review refresh reads, and member-update graduation checks. Error cleanup must await the pending-only delete operation so cleanup failures are observed rather than becoming unhandled promise rejections.
+- The Trial submission path currently writes the submission before sending the Discord review message, then saves the Discord message reference. If later Discord/evidence work fails, it attempts to delete the still-pending database submission. This ordering and compensating cleanup must be retained, with awaited DB operations.
+- The current Honor module performs schema creation, conditional column addition, initial Honor seeding, and icon assignment at import time. The seeding and icon updates are grouped in transactions today; the async replacement must preserve idempotency and avoid resetting user-customized Honor display names or order.
+- `leaderboard.js` currently imports the database module as a synchronous object, queries scores and settings synchronously, and saves the new Discord message ID after posting. The refresh routine is already async, so its DB reads/writes can be awaited, but the saved-message behavior and recovery from a deleted Discord message must remain intact.
+
+### Newly confirmed implementation constraints
+
+- Do not expose a synchronous-looking compatibility facade around the Turso client. Returning promises from methods that existing callers treat as rows/arrays would create subtle runtime failures. Convert the complete call graph and make async return types explicit.
+- Prefer an explicit database service API over exporting a raw client that every feature module uses directly. The service should centralize parameterized execution, result normalization, transaction lifecycle, and initialization state. This is a design direction, not an implemented change.
+- For transaction callbacks that perform dependent reads and writes, each statement must execute through the same interactive transaction object. The transaction must be committed only after all guards and writes succeed, rolled back on error, and closed in a `finally` path.
+- Manual Saga point adjustments need special concurrency review. A transaction alone does not necessarily prevent two simultaneous deductions from both reading the same starting balance; the eventual implementation should serialize/guard the balance update or use an atomic database-side calculation so deductions cannot exceed the available balance.
+- No application code or dependency changes have been made as part of these additional findings. The branch remains an audit-only, non-deployable branch.
