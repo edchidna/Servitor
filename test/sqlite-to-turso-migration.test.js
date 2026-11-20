@@ -294,6 +294,24 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
     const blockedRestorePath = path.join(directory, 'blocked-restore-target.db');
     fs.copyFileSync(restoredPath, blockedRestorePath);
     const blockedTarget = new BetterSqlite(blockedRestorePath);
+    // Reset only Honor data to the schema's untouched seed state so the
+    // restore preflight reaches the deliberately populated reports table.
+    blockedTarget.exec('DELETE FROM honor_awards');
+    blockedTarget.exec('DELETE FROM honors');
+    const cleanHonorInsert = blockedTarget.prepare(
+      'INSERT INTO honors (honor_id, display_name, display_order, icon_path) VALUES (?, ?, ?, ?)'
+    );
+    const defaultIcons = [
+      'assets/honors/Conversion ward.png',
+      'assets/honors/Crux Terminatus.png',
+      'assets/honors/Fang Necklace.png',
+      'assets/honors/Gem.png',
+      'assets/honors/Rune.png',
+      null, null, null, null, null
+    ];
+    for (let i = 1; i <= 10; i++) {
+      cleanHonorInsert.run(`honor_${i}`, `Honor ${i}`, i, defaultIcons[i - 1]);
+    }
     blockedTarget.prepare(
       'INSERT INTO reports (id, submitter_id, game_mode, report_data) VALUES (?, ?, ?, ?)'
     ).run(999, 'existing-restore-user', 'Operations', '{"operation":"Keep me"}');
