@@ -138,3 +138,26 @@ Use a single shared `@libsql/client` instance. For short, fixed SQL groups, use 
 - For transaction callbacks that perform dependent reads and writes, each statement must execute through the same interactive transaction object. The transaction must be committed only after all guards and writes succeed, rolled back on error, and closed in a `finally` path.
 - Manual Saga point adjustments need special concurrency review. A transaction alone does not necessarily prevent two simultaneous deductions from both reading the same starting balance; the eventual implementation should serialize/guard the balance update or use an atomic database-side calculation so deductions cannot exceed the available balance.
 - No application code or dependency changes have been made as part of these additional findings. The branch remains an audit-only, non-deployable branch.
+
+
+### Final direct-call inventory pass
+
+A fresh line-by-line scan of the current branch found the following direct synchronous DB entry points. This is a more actionable inventory than the earlier approximate regex totals; it still needs a final review after implementation because moving calls into service methods will change the counts.
+
+- `index.js` (6,789 lines): direct database operations at lines 782, 890, 914, 942, 1750, 1825, 1873, 1883, 1927, 1976, 1991, 2116–2117, 2211, 2310, 2330, 2394–2440, 2515, 2580, 2806, 2901, 3082–3102, 3157–3177, 3446–3500, 4064, 4103, 4144, 4181, 5240, 5381–5383, 5511, 5559, 5609, 5761, 5847, and four report/participant submission transaction blocks around 6042, 6249, 6427, and 6636. Honor API consumers are additionally present around lines 3313, 3686–3951, and 4210.
+- `trial.js` (1,506 lines): Trial API consumers around lines 620, 732, 811, 905, 983, 1034, 1417, and 1456. Direct shared-database operations occur around lines 856, 1113, and 1362. The progress helper at line 620 is synchronous today and must be converted before any promise-valued progress can reach the review UI.
+- `honor.js` (268 lines): synchronous data access exists in every exported read/write workflow: list/get, member awards, award/remove, history, rename, layout read/write, and display-layout composition. The display-layout function performs multiple dependent reads and therefore must await both stages.
+- `trial-database.js`: schema creation at module load plus the submission, retrieval, progress, review, Discord-reference, and pending-cleanup methods. Review and cleanup contain multi-statement transactions.
+- `honor-database.js`: schema and seed initialization at module load, a PRAGMA-based column migration, and two transactions (seed defaults and assign built-in icon paths).
+- `leaderboard.js`: aggregate-score read, saved-message lookup, and saved-message ID upsert are synchronous today; `refreshLeaderboard()` is already asynchronous and can await these operations.
+- `backup-database.js`: local SQLite backup utility is separate from runtime DB access and needs a new remote backup/export workflow for Turso.
+
+### Important data-integrity note: Honor initialization
+
+The Honor initialization transaction seeds ten default Honor rows with `INSERT OR IGNORE`, then assigns five built-in icon paths. Preserve the existing row values and the uniqueness of `display_order`; migration must not re-seed over customized Honor names/order or overwrite unrelated icon choices. The existing icon update behavior should be reviewed against the current database before porting because it updates the five configured Honor IDs every startup.
+
+### Current implementation checkpoint
+
+- Latest audit-only commit: `549f0631736b47c015136fa2830a3079389f7d13`.
+- No JavaScript source, package manifest, lockfile, database file, or deployment configuration has been changed.
+- The Turso branch remains intentionally non-deployable until the async service, schema migration, caller conversion, data transfer, and validation work are complete.
