@@ -1,7 +1,8 @@
 
 require('dotenv').config();
 
-const db = require('./database');
+const db = require('./database'); // Legacy SQLite remains in use for unmigrated workflows.
+const aarDatabase = require('./aar-database-turso');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
 const { Resvg } = require('@resvg/resvg-js');
@@ -6039,45 +6040,15 @@ db.prepare(`
         armouryData
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'Operations',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'Operations',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
-
-      const reportId = saveReport();
 
       // Acknowledge Discord before processing uploads.
       await interaction.deferReply({
@@ -6246,45 +6217,15 @@ db.prepare(`
         armouryData
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'Stratagems',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'Stratagems',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
-
-      const reportId = saveReport();
 
       // Acknowledge Discord before processing uploads.
       await interaction.deferReply({
@@ -6424,45 +6365,15 @@ db.prepare(`
         result
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'PVP',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'PVP',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
-
-      const reportId = saveReport();
 
       await interaction.deferReply({
         flags: MessageFlags.Ephemeral
@@ -6633,45 +6544,15 @@ db.prepare(`
         waves
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'Siege',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'Siege',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
-
-      const reportId = saveReport();
 
       // Acknowledge Discord before processing uploads.
       await interaction.deferReply({
