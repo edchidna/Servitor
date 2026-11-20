@@ -337,3 +337,15 @@ This checkpoint supersedes earlier notes that said these workflows and startup w
 - The migration utility must be reviewed and rehearsed against a disposable copy of the real SQLite database and a disposable Turso database before using it on production data.
 - The new startup path will not run until the dependency is installed and Turso environment variables are configured.
 - Keep `main` as the known-good fallback. Do not deploy or merge this branch yet.
+
+
+## Follow-up hardening: backup and transfer verification
+
+- Replaced the old SQLite-only `backup-database.js` with a Turso logical export. It exports every application table to a timestamped JSON file under `backups/`, records the format/version and timestamp, and serializes large integer values safely.
+- Added `/backups/` to `.gitignore` so generated database exports are not accidentally committed.
+- The logical export is a data snapshot, not a byte-for-byte Turso database image and not yet a restore command. Store copies outside the bot host as well.
+- The SQLite transfer utility now holds one read transaction for a consistent source snapshot and verifies target row counts after each imported table. Honor records are checked by ID because the target schema seeds default Honor rows before import.
+- Restored the legacy Trial module's strict JSON-safety validation in the async Trial persistence module. This rejects circular values, non-finite numbers, sparse arrays, symbol keys, accessors, and non-plain objects rather than silently dropping or transforming them during JSON serialization.
+
+### Still not verified
+These are code-level safeguards only. No actual Turso connection, export, import, schema migration, Node test, or Discord workflow has run yet. The package dependency and lockfile remain the first execution blocker.
