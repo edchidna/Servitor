@@ -425,3 +425,14 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 
 
 - CI remote-test secret handling was hardened by moving the two dedicated Turso test secrets to job-level environment scope, so the step conditions can actually evaluate whether remote verification should run. The test suite still refuses any non-empty remote database before making schema changes.
+
+
+## Restore failure and retry safety audit (2026-11-21)
+
+- The restore utility preflights the complete expected table inventory, schema version, target table emptiness, seeded Honor state, and per-table column names before inserting backup rows.
+- Restore writes each table in its own transaction and verifies that table immediately after the write. This prevents a failed table transaction from leaving a partially written version of that table.
+- **Important operational limitation:** the restore is not one transaction spanning the entire database. If a later table fails after earlier tables have committed, the target can contain a partially restored dataset. Do not retry against that target and do not point Servitor at it. Destroy/recreate or otherwise reset the disposable target to the clean schema state, then retry the restore from the same verified backup.
+- A successful restore must reach the final `Servitor logical backup restore completed and verified.` message, with every expected table reporting its restored and verified row count. A process exit or error before that point is a failed restore, even if some earlier tables were restored successfully.
+- This is a logical JSON restore, not a byte-for-byte database image. Keep the original SQLite backup and the logical backup off-host until remote recovery rehearsal is complete.
+- Remote recovery remains unverified until the same procedure passes against a separate disposable remote Turso database.
+
