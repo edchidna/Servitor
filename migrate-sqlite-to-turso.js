@@ -173,6 +173,35 @@ async function main() {
       );
     }
 
+    // Preflight every target table before writing anything. Honors are the
+    // only exception because schema initialization intentionally seeds them.
+    const seededHonorIds = Array.from({ length: 10 }, (_, index) => `honor_${index + 1}`);
+    const targetHonorResult = await target.execute(
+      'SELECT honor_id FROM honors ORDER BY honor_id'
+    );
+    const targetHonorIds = targetHonorResult.rows.map(row => row.honor_id);
+    if (
+      targetHonorIds.length !== seededHonorIds.length ||
+      seededHonorIds.some(id => !targetHonorIds.includes(id))
+    ) {
+      throw new Error(
+        'Target honors table is not in its expected clean seeded state. Refusing to merge data.'
+      );
+    }
+
+    for (const table of TABLES_IN_INSERT_ORDER) {
+      if (!sourceTables.has(table)) continue;
+      if (table === 'honors') continue;
+      const targetCount = await target.execute(
+        `SELECT COUNT(*) AS count FROM ${quoteIdentifier(table)}`
+      );
+      if (Number(targetCount.rows[0]?.count || 0) !== 0) {
+        throw new Error(
+          `Target table ${table} is not empty. Refusing to merge or duplicate records.`
+        );
+      }
+    }
+
     for (const table of TABLES_IN_INSERT_ORDER) {
       if (!sourceTables.has(table)) continue;
       const quoted = quoteIdentifier(table);
