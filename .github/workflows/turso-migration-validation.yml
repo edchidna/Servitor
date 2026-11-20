@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# Push and pull_request events can target the same disposable remote database.
+# Serialize the entire workflow so two smoke suites never mutate it concurrently.
+concurrency:
+  group: servitor-turso-migration-validation
+  cancel-in-progress: false
+
 jobs:
   syntax-and-dependency:
     runs-on: ubuntu-latest
