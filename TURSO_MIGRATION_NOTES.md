@@ -6,10 +6,12 @@
 
 ## Safety status
 
-- `main` remains untouched.
-- This branch currently contains no application-code migration.
-- The migration must not be deployed or merged until static checks, database migration checks, and user-run Discord tests pass.
-- Existing data should be preserved where possible; backup is required before cutover.
+- `main` remains untouched; all migration work is confined to `migration/turso`.
+- The migration implementation is now substantially integrated: the shared async Turso client, schemas, AAR/Ordeal/Trial/Honor/leaderboard/Saga/tenure persistence, startup wiring, transfer utility, and backup/restore utilities are present on this branch.
+- This branch is **not production-ready**. Remote Turso validation, a rehearsal using a copy of the real SQLite database, remote recovery testing, and Discord test-server acceptance remain outstanding.
+- Do not merge, deploy, or cut over without Ed's explicit approval. Keep the original `aar-database.db` and its independent backup untouched until migration and recovery rehearsals are complete.
+
+> **Document status:** This file contains chronological audit notes from earlier implementation stages. Sections explicitly titled “checkpoint” or “historical” record what was true at that point in development; they are not current-state claims. The current authoritative implementation and validation summary is in the README and the latest sections of this document.
 
 ## Database usage inventory
 
@@ -96,7 +98,7 @@ The precise client configuration and transaction API must be finalized before im
 - Honor database exports are synchronous and consumed from command handlers and Saga History rendering; these callers must be converted too.
 - Startup event registration must be gated behind awaited DB initialization so the bot cannot process interactions while migrations are incomplete.
 
-### Important design choice still pending
+### Design choice settled in the implementation
 
 Use a single shared `@libsql/client` instance. For short, fixed SQL groups, use libSQL atomic batch operations where they can faithfully express the current transaction. For conditional workflows that need results from earlier statements (e.g. reading current status and then deciding whether to write ledger entries), use an interactive write transaction with explicit commit/rollback and guaranteed close in `finally`. Do not emulate a transaction with unrelated `execute()` calls.
 
@@ -115,11 +117,13 @@ Use a single shared `@libsql/client` instance. For short, fixed SQL groups, use 
 - `backup-database.js` currently uses `better-sqlite3`'s local-file backup API. That script cannot remain unchanged after the bot moves to remote Turso. A separate, tested Turso backup/export procedure is required; do not treat a local SQLite backup as a backup of the remote database.
 - `package.json` currently has `better-sqlite3` as a dependency and does not include `@libsql/client`. Dependency replacement should happen only alongside the complete migration, not as a standalone package edit.
 
-### Current branch implementation status
+### Historical checkpoint: before application migration integration
 
-- The only committed change on `migration/turso` so far is this audit document.
-- No application JavaScript or package dependency has been modified yet.
-- The latest audit commit is documentation-only. It is not deployable and must not be used to start the bot as a Turso build.
+The following bullets describe an early audit-only stage and are retained for historical context; they are superseded by the later implementation checkpoints and current status above.
+
+- At that checkpoint, the only committed change on `migration/turso` was this audit document.
+- At that checkpoint, no application JavaScript or package dependency had been modified.
+- Those statements no longer describe the current branch.
 
 ### Startup and nested async dependency findings
 
@@ -163,7 +167,7 @@ The Honor initialization transaction seeds ten default Honor rows with `INSERT O
 - The Turso branch remains intentionally non-deployable until the async service, schema migration, caller conversion, data transfer, and validation work are complete.
 
 
-## Implementation checkpoint: async database foundation
+## Historical implementation checkpoint: async database foundation
 
 The first two application-support files have now been added to `migration/turso`:
 
@@ -196,7 +200,7 @@ Latest foundation commits:
 - `3b6772d4ce67c57aa3408ef6b77fb26f6e4b016d` — hardened rollback-error handling.
 
 
-### Feature schema foundation added
+### Historical checkpoint: feature schema foundation added
 
 A third support file, `feature-database-schemas.js`, has been added. It provides explicit async initializers for Trial and Honor schemas, both using the shared interactive transaction helper.
 
@@ -212,7 +216,7 @@ Latest commit:
 The foundation code is not yet validated against a live/disposable Turso database. In particular, transaction-wrapped DDL, `PRAGMA table_info`, foreign-key enforcement, and repeated initialization must be exercised before runtime adoption.
 
 
-## Trial persistence implementation checkpoint
+## Historical checkpoint: Trial persistence implementation
 
 Two Trial runtime files have now been added/updated on the migration branch:
 
@@ -239,7 +243,7 @@ Latest Trial commits:
 - `dec43d37e3a7e2700518e1502904b61d0299d3ba` — serialize dependent reads inside Trial review transaction.
 
 
-## Implementation checkpoint: Honor and leaderboard async conversion
+## Historical checkpoint: Honor and leaderboard async conversion
 
 The migration branch now includes the following additional changes:
 
@@ -263,7 +267,7 @@ The runtime startup path has not yet been switched to Turso. `index.js` still im
 - Verify the leaderboard's union query against the final core and Trial schema.
 
 
-## AAR persistence module foundation
+## Historical checkpoint: AAR persistence module foundation
 
 Added `aar-database-turso.js` with explicit asynchronous persistence operations for the core AAR workflow:
 
@@ -278,7 +282,7 @@ Added `aar-database-turso.js` with explicit asynchronous persistence operations 
 This module is currently a staged persistence layer. The corresponding `index.js` workflows have not yet been switched to it, so it must not be treated as active runtime code. The remaining AAR/Ordeal/Saga direct database operations in `index.js` still require async conversion and call-site updates.
 
 
-## Implementation checkpoint: AAR review, Ordeal review, and Saga adjustment workflows
+## Historical checkpoint: AAR review, Ordeal review, and Saga adjustment workflows
 
 Additional async persistence work has now been connected to `index.js`:
 
@@ -306,7 +310,7 @@ Additional async persistence work has now been connected to `index.js`:
 - Treat all new SQL/transaction paths as implementation candidates until they have been verified against a disposable Turso database and the legacy SQLite schema/behavior.
 
 
-## Latest implementation checkpoint: Ordeal submission, tenure, Saga History, and startup
+## Historical checkpoint: Ordeal submission, tenure, Saga History, and startup
 
 This checkpoint supersedes earlier notes that said these workflows and startup were still on SQLite.
 
