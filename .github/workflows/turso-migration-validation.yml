@@ -34,6 +34,9 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check:syntax
 
+      - name: Run local libSQL migration smoke tests
+        run: npm run test:libsql
+
       - name: Commit generated lockfile when changed
         run: |
           if ! git diff --quiet -- package-lock.json; then
