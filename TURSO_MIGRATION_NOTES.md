@@ -432,3 +432,13 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Removed `--ignore-scripts` from the migration CI's `npm ci` step.
 - CI now runs normal package installation so supported native dependency install steps (including the existing Sharp and better-sqlite3 dependencies) are exercised on the Ubuntu/Node 22 runner, not silently skipped.
 - This still does not prove compatibility on the eventual hosting provider's operating system/runtime; host-specific deployment validation remains required.
+
+
+## Remote foreign-key validation harness
+
+- Added `test/turso-remote-foreign-key-smoke.js`, which requires a dedicated disposable database through `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN`.
+- The probe creates uniquely named temporary parent/child tables, checks foreign-key PRAGMA state across standalone statements and an interactive transaction, verifies orphan inserts are rejected in both contexts, and drops its probe tables afterward.
+- Added `npm run test:turso-remote-fk`.
+- Added an optional GitHub Actions step. It runs only when both dedicated test-database secrets are configured; otherwise CI explicitly reports that remote validation was skipped.
+- Do not point these test secrets at the production database. The probe creates and drops temporary tables.
+- Until this probe passes against a real disposable remote Turso database, remote foreign-key enforcement remains unverified and blocks production readiness.
