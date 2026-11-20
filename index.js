@@ -3310,7 +3310,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (focused.name === 'honor') {
           const search = focused.value.toLowerCase();
 
-          const matchingHonors = honor.getAllHonors()
+          const matchingHonors = (await honor.getAllHonors())
             .filter(item =>
               item.display_name.toLowerCase().includes(search) ||
               item.honor_id.toLowerCase().includes(search)
@@ -3683,7 +3683,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const selectedUser = interaction.options.getUser('member', true);
           const honorId = interaction.options.getString('honor', true);
 
-          const selectedHonor = honor.getHonorById(honorId);
+          const selectedHonor = await honor.getHonorById(honorId);
 
           if (!selectedHonor) {
             await interaction.reply({
@@ -3709,7 +3709,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
           }
 
-          const result = honor.awardHonor(
+          const result = await honor.awardHonor(
             guildId,
             member.id,
             honorId,
@@ -3735,7 +3735,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const selectedUser = interaction.options.getUser('member', true);
           const honorId = interaction.options.getString('honor', true);
 
-          const selectedHonor = honor.getHonorById(honorId);
+          const selectedHonor = await honor.getHonorById(honorId);
 
           if (!selectedHonor) {
             await interaction.reply({
@@ -3761,7 +3761,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
           }
 
-          const result = honor.removeHonor(
+          const result = await honor.removeHonor(
             guildId,
             member.id,
             honorId,
@@ -3803,7 +3803,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
           }
 
-          const memberHonors = honor.getMemberHonors(
+          const memberHonors = await honor.getMemberHonors(
             guildId,
             member.id
           );
@@ -3847,7 +3847,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
           }
 
-          const history = honor.getMemberHonorHistory(
+          const history = await honor.getMemberHonorHistory(
             guildId,
             member.id
           );
@@ -3931,7 +3931,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const honorId = interaction.options.getString('honor', true);
           const newName = interaction.options.getString('name', true);
 
-          const result = honor.renameHonor(honorId, newName);
+          const result = await honor.renameHonor(honorId, newName);
 
           await interaction.reply({
             content: result.message,
@@ -3948,7 +3948,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (subcommand === 'layout') {
           const layoutMode = interaction.options.getString('mode', true);
 
-          const result = honor.setHonorLayout(
+          const result = await honor.setHonorLayout(
             guildId,
             layoutMode
           );
@@ -4207,7 +4207,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         }
 
-        const honorLayout = honor.getHonorDisplayLayout(
+        const honorLayout = await honor.getHonorDisplayLayout(
           interaction.guild.id,
           member.id
         );
