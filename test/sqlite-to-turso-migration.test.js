@@ -290,6 +290,47 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
     } finally {
       restoredClient.close();
     }
+
+    const blockedRestorePath = path.join(directory, 'blocked-restore-target.db');
+    fs.copyFileSync(restoredPath, blockedRestorePath);
+    const blockedTarget = new BetterSqlite(blockedRestorePath);
+    blockedTarget.prepare(
+      'INSERT INTO reports (id, submitter_id, game_mode, report_data) VALUES (?, ?, ?, ?)'
+    ).run(999, 'existing-restore-user', 'Operations', '{"operation":"Keep me"}');
+    blockedTarget.close();
+
+    const blockedRestore = spawnSync(
+      process.execPath,
+      [path.join(__dirname, '..', 'restore-database.js'), backupFilePath],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          TURSO_DATABASE_URL: `file:${blockedRestorePath}`,
+          TURSO_AUTH_TOKEN: '',
+          BACKUP_FILE: backupFilePath
+        }
+      }
+    );
+    assert.notEqual(blockedRestore.status, 0);
+    assert.match(
+      blockedRestore.stderr,
+      /Target table reports is not empty\. Refusing to merge backup data\./
+    );
+
+    const blockedCheck = new BetterSqlite(blockedRestorePath, { readonly: true });
+    try {
+      assert.equal(
+        blockedCheck.prepare('SELECT COUNT(*) AS count FROM reports').get().count,
+        2
+      );
+      assert.equal(
+        blockedCheck.prepare('SELECT id FROM reports WHERE id = 999').get().id,
+        999
+      );
+    } finally {
+      blockedCheck.close();
+    }
   } finally {
     if (targetClient) targetClient.close();
     source.close();
