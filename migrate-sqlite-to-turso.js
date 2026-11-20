@@ -56,11 +56,15 @@ async function main() {
     throw new Error('TURSO_AUTH_TOKEN is required for a remote Turso database.');
   }
 
-  const source = new Database(sourcePath, { readonly: true, fileMustExist: true });
-  await database.initializeDatabase();
-  const target = database.getClient();
+  let source = null;
+  let databaseReady = false;
 
   try {
+    await database.initializeDatabase();
+    databaseReady = true;
+    const target = database.getClient();
+    source = new Database(sourcePath, { readonly: true, fileMustExist: true });
+
     await target.execute('PRAGMA foreign_keys = ON');
     await target.execute('SELECT 1 AS connected');
     await initializeCoreSchema();
@@ -147,8 +151,8 @@ async function main() {
 
     console.log('SQLite to Turso transfer completed. Verify row counts before switching the bot.');
   } finally {
-    source.close();
-    await database.closeDatabase();
+    if (source) source.close();
+    if (databaseReady) await database.closeDatabase();
   }
 }
 
