@@ -121,7 +121,14 @@ async function withTransaction(callback, mode = 'write') {
       try {
         await tx.rollback();
       } catch (rollbackError) {
-        error.rollbackError = rollbackError;
+        if (error && typeof error === 'object') {
+          error.rollbackError = rollbackError;
+        } else {
+          throw new AggregateError(
+            [new Error(String(error)), rollbackError],
+            'Database transaction failed and rollback also failed.'
+          );
+        }
       }
     }
     throw error;
