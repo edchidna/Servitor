@@ -757,6 +757,10 @@ const client = new Client({
 
 // Stores each user's selected difficulty
 // until they submit their Operations report.
+let aarRecoveryInterval = null;
+let veteranPromotionInterval = null;
+let shutdownPromise = null;
+
 const pendingDifficultySelections = new Map();
 const pendingStratagemDifficultySelections = new Map();
 const pendingSiegeDifficultySelections = new Map();
@@ -833,13 +837,13 @@ client.once(Events.ClientReady, async (readyClient) => {
   await runAarRecovery();
 
   // Retry failed review-card updates every 5 minutes.
-  setInterval(runAarRecovery, 5 * 60 * 1000);
+  aarRecoveryInterval = setInterval(runAarRecovery, 5 * 60 * 1000);
 
   // Automatic Veteran promotion check.
   await checkVeteranPromotion();
 
   // Repeat the check every 24 hours.
-  setInterval(checkVeteranPromotion, 24 * 60 * 60 * 1000);
+  veteranPromotionInterval = setInterval(checkVeteranPromotion, 24 * 60 * 60 * 1000);
 });
 
 
@@ -6226,12 +6230,75 @@ async function startServitor() {
   await client.login(process.env.DISCORD_TOKEN);
 }
 
+async function closeKeepAliveServer() {
+  if (!keep_alive.listening) return;
+
+  await new Promise((resolve, reject) => {
+    keep_alive.close(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function shutdownServitor(signal) {
+  if (shutdownPromise) return shutdownPromise;
+
+  shutdownPromise = (async () => {
+    console.log(`Received ${signal}; shutting down Servitor...`);
+
+    if (aarRecoveryInterval) clearInterval(aarRecoveryInterval);
+    if (veteranPromotionInterval) clearInterval(veteranPromotionInterval);
+
+    const shutdownErrors = [];
+
+    try {
+      await client.destroy();
+    } catch (error) {
+      shutdownErrors.push(error);
+      console.error('Discord client shutdown failed:', error);
+    }
+
+    try {
+      await database.closeDatabase();
+    } catch (error) {
+      shutdownErrors.push(error);
+      console.error('Database shutdown failed:', error);
+    }
+
+    try {
+      await closeKeepAliveServer();
+    } catch (error) {
+      shutdownErrors.push(error);
+      console.error('Health-check server shutdown failed:', error);
+    }
+
+    process.exitCode = shutdownErrors.length > 0 ? 1 : 0;
+    console.log('Servitor shutdown complete.');
+  })();
+
+  return shutdownPromise;
+}
+
+process.once('SIGINT', () => {
+  void shutdownServitor('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+  void shutdownServitor('SIGTERM');
+});
+
 startServitor().catch(async error => {
   console.error('Servitor startup failed:', error);
   try {
     await database.closeDatabase();
   } catch (closeError) {
     console.error('Database shutdown after startup failure also failed:', closeError);
+  }
+  try {
+    await closeKeepAliveServer();
+  } catch (closeError) {
+    console.error('Health-check server shutdown after startup failure also failed:', closeError);
   }
   process.exitCode = 1;
 });
