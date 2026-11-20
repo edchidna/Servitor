@@ -33,6 +33,9 @@ jobs:
 
       - name: Run local libSQL migration smoke tests
         run: npm run test:libsql
+
+      - name: Run Operations modal workflow regression test
+        run: npm run test:operations-modal
       
       - name: Run full persistence suite against disposable remote Turso
         if: ${{ env.TURSO_TEST_DATABASE_URL != '' && env.TURSO_TEST_AUTH_TOKEN != '' }}
