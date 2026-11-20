@@ -4,6 +4,7 @@ require('dotenv').config();
 const db = require('./database'); // Legacy SQLite remains in use for unmigrated workflows.
 const aarDatabase = require('./aar-database-turso');
 const ordealDatabase = require('./ordeal-database-turso');
+const sagaDatabase = require('./saga-database-turso');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
 const { Resvg } = require('@resvg/resvg-js');
@@ -3222,97 +3223,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // CALCULATE CURRENT SAGA POINT BALANCE
         // --------------------------------------
 
-        const getCurrentSagaPoints = db.prepare(`
-          SELECT COALESCE(SUM(points), 0) AS total_points
-          FROM (
-            SELECT sl.points
-            FROM score_ledger sl
-            INNER JOIN reports r
-              ON r.id = sl.report_id
-            WHERE r.status = 'approved'
-              AND sl.user_id = ?
-
-            UNION ALL
-
-            SELECT tsl.points
-            FROM trial_score_ledger tsl
-            INNER JOIN trial_submissions ts
-              ON ts.id = tsl.submission_id
-            WHERE ts.status = 'approved'
-              AND tsl.user_id = ?
-
-            UNION ALL
-
-            SELECT spa.points_delta AS points
-            FROM saga_point_adjustments spa
-            WHERE spa.guild_id = ?
-              AND spa.user_id = ?
-          )
-        `);
-
-        // --------------------------------------
-        // RECORD ADJUSTMENT ATOMICALLY
-        // --------------------------------------
-
-        const applyAdjustment = db.transaction(() => {
-
-          const currentBalance = Math.max(
-            0,
-            Number(
-              getCurrentSagaPoints.get(
-                targetUser.id,
-                targetUser.id,
-                interaction.guild.id,
-                targetUser.id
-              ).total_points
-            )
-          );
-
-          const appliedPoints = subcommand === 'deduct'
-            ? Math.min(requestedPoints, currentBalance)
-            : requestedPoints;
-
-          const pointsDelta = subcommand === 'deduct'
-            ? -appliedPoints
-            : appliedPoints;
-
-          const result = db.prepare(`
-            INSERT INTO saga_point_adjustments (
-              guild_id,
-              user_id,
-              moderator_id,
-              action,
-              requested_points,
-              applied_points,
-              points_delta,
-              reason
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            interaction.guild.id,
-            targetUser.id,
-            interaction.user.id,
-            subcommand,
-            requestedPoints,
-            appliedPoints,
-            pointsDelta,
-            reason
-          );
-
-          const newBalance = Math.max(
-            0,
-            currentBalance + pointsDelta
-          );
-
-          return {
-            auditId: Number(result.lastInsertRowid),
-            currentBalance,
-            appliedPoints,
-            newBalance
-          };
-        });
-
         let adjustment;
+
+        try {
+          adjustment = await sagaDatabase.applySagaAdjustment({
+            guildId: interaction.guild.id,
+            userId: targetUser.id,
+            moderatorId: interaction.user.id,
+            action: subcommand,
+            requestedPoints,
+            reason
+          });
+        } catch (error) {
+          console.error('Saga Point adjustment failed:', error);
+
+          await interaction.editReply({
+            content: 'The Saga Point adjustment failed. No changes were saved.'
+          });
+          return;
+        }
+
 
         try {
           adjustment = applyAdjustment();
