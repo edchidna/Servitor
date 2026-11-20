@@ -11,6 +11,9 @@ const { createClient } = require('@libsql/client');
 let client = null;
 let initializationPromise = null;
 let closing = false;
+let closePromise = null;
+let activeOperations = 0;
+const operationDrainWaiters = [];
 
 function getDatabaseConfig() {
   const url = process.env.TURSO_DATABASE_URL;
@@ -72,6 +75,36 @@ async function initializeDatabase() {
   return initializationPromise;
 }
 
+function beginOperation() {
+  if (closing) {
+    throw new Error('Database is currently shutting down.');
+  }
+
+  activeOperations += 1;
+  let finished = false;
+
+  return () => {
+    if (finished) return;
+    finished = true;
+    activeOperations -= 1;
+
+    if (activeOperations === 0) {
+      while (operationDrainWaiters.length > 0) {
+        operationDrainWaiters.shift()();
+      }
+    }
+  };
+}
+
+async function runTrackedOperation(operation) {
+  const finish = beginOperation();
+  try {
+    return await operation();
+  } finally {
+    finish();
+  }
+}
+
 function getClient() {
   if (!client) {
     throw new Error(
@@ -89,7 +122,9 @@ function getClient() {
 async function execute(statement, args = []) {
   if (typeof statement === 'string') {
     if (!statement.trim()) throw new TypeError('SQL must be a non-empty string.');
-    return getClient().execute({ sql: statement, args });
+    return runTrackedOperation(() =>
+      getClient().execute({ sql: statement, args })
+    );
   }
 
   if (
@@ -99,7 +134,7 @@ async function execute(statement, args = []) {
     statement.sql.trim() &&
     (statement.args === undefined || Array.isArray(statement.args))
   ) {
-    return getClient().execute(statement);
+    return runTrackedOperation(() => getClient().execute(statement));
   }
 
   throw new TypeError('Database execute expects a SQL string or a libSQL statement object.');
@@ -113,7 +148,7 @@ async function batch(statements, mode = 'write') {
   if (!Array.isArray(statements) || statements.length === 0) {
     throw new TypeError('Database batch requires at least one statement.');
   }
-  return getClient().batch(statements, mode);
+  return runTrackedOperation(() => getClient().batch(statements, mode));
 }
 
 /**
@@ -125,55 +160,69 @@ async function withTransaction(callback, mode = 'write') {
     throw new TypeError('Transaction callback must be a function.');
   }
 
-  const tx = await getClient().transaction(mode);
-  let committed = false;
+  return runTrackedOperation(async () => {
+    const tx = await getClient().transaction(mode);
+    let committed = false;
 
-  try {
-    const result = await callback(tx);
-    await tx.commit();
-    committed = true;
-    return result;
-  } catch (error) {
-    if (!committed) {
-      try {
-        await tx.rollback();
-      } catch (rollbackError) {
-        if (error && typeof error === 'object') {
-          error.rollbackError = rollbackError;
-        } else {
-          throw new AggregateError(
-            [new Error(String(error)), rollbackError],
-            'Database transaction failed and rollback also failed.'
-          );
+    try {
+      const result = await callback(tx);
+      await tx.commit();
+      committed = true;
+      return result;
+    } catch (error) {
+      if (!committed) {
+        try {
+          await tx.rollback();
+        } catch (rollbackError) {
+          if (error && typeof error === 'object') {
+            error.rollbackError = rollbackError;
+          } else {
+            throw new AggregateError(
+              [new Error(String(error)), rollbackError],
+              'Database transaction failed and rollback also failed.'
+            );
+          }
         }
       }
+      throw error;
+    } finally {
+      tx.close();
     }
-    throw error;
-  } finally {
-    tx.close();
-  }
+  });
 }
 
 /**
  * Close the process-wide client during an orderly shutdown.
  */
 async function closeDatabase() {
+  if (closePromise) return closePromise;
+
   closing = true;
-
-  if (initializationPromise) {
-    try {
-      await initializationPromise;
-    } catch {
-      // Preserve shutdown even if connection initialization failed.
+  closePromise = (async () => {
+    if (initializationPromise) {
+      try {
+        await initializationPromise;
+      } catch {
+        // Preserve shutdown even if connection initialization failed.
+      }
     }
-  }
 
-  if (client) {
-    client.close();
-    client = null;
-  }
+    if (activeOperations > 0) {
+      await new Promise(resolve => operationDrainWaiters.push(resolve));
+    }
 
-  closing = false;
+    if (client) {
+      client.close();
+      client = null;
+    }
+  })();
+
+  try {
+    await closePromise;
+  } finally {
+    closePromise = null;
+    closing = false;
+  }
 }
 
 module.exports = {
