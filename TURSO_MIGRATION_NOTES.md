@@ -450,3 +450,15 @@ A static review of the current startup/runtime code found two hosting-readiness 
 - `index.js` does not register `SIGINT` or `SIGTERM` shutdown handlers. It closes the Turso client when startup fails, but a normal host stop does not currently explicitly destroy the Discord client and close the database through an application shutdown path. The two recurring `setInterval` jobs are also not retained for cleanup.
 
 These are static findings, not observed runtime failures. Before choosing or configuring a host, add and test a graceful shutdown path, make the health-check listener use the provider's expected port, and verify restart/reconnect behavior. Do not assume the existing HTTP keep-alive endpoint alone makes the bot production-ready.
+
+
+## Hosting runtime follow-up (2026-11-21)
+
+The initial static hosting findings have now been addressed on `migration/turso`:
+
+- `keep_alive.js` now listens on the hosting-provided `PORT` value, falling back to `8080` for local use, validates the port, and exports the HTTP server for orderly closure.
+- The AAR recovery and Veteran promotion intervals are retained so they can be cleared during shutdown.
+- `SIGINT` and `SIGTERM` now trigger a single guarded shutdown sequence that stops recurring jobs, destroys the Discord client, closes the Turso client, and closes the health-check server.
+- Startup failure now also attempts to destroy the Discord client and close both database and health-check resources.
+
+This is a source-level implementation only. It has not yet been exercised on the selected hosting provider or in a live Discord runtime. Provider-specific port binding, termination grace periods, and restart behavior still require a deployment rehearsal on a non-production test instance.
