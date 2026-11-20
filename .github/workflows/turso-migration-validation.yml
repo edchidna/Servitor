@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   syntax-and-dependency:
@@ -25,16 +25,21 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies and regenerate lockfile
-        run: npm install --ignore-scripts
+      - name: Regenerate package lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install from the generated lockfile
+        run: npm ci --ignore-scripts
 
       - name: Check JavaScript syntax
         run: npm run check:syntax
 
-      - name: Upload generated lockfile for review
-        uses: actions/upload-artifact@v4
-        with:
-          name: migration-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 7
+      - name: Commit generated lockfile when changed
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore: generate Turso migration lockfile"
+            git push origin HEAD:migration/turso
+          fi
