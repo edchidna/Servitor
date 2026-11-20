@@ -6291,6 +6291,11 @@ process.once('SIGTERM', () => {
 startServitor().catch(async error => {
   console.error('Servitor startup failed:', error);
   try {
+    await client.destroy();
+  } catch (closeError) {
+    console.error('Discord client shutdown after startup failure also failed:', closeError);
+  }
+  try {
     await database.closeDatabase();
   } catch (closeError) {
     console.error('Database shutdown after startup failure also failed:', closeError);
