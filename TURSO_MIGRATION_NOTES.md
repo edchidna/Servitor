@@ -376,7 +376,7 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - Syntax validation covers root-level JavaScript files and JavaScript test files.
 - The local persistence suite contains twelve tests covering full SQLite-to-libSQL transfer, refusal of populated targets, core/feature schema setup, foreign keys, AAR atomicity and review, rollback, Trial progression/scoring, Ordeal's zero-point/audit behavior, Honor award lifecycle, Saga point adjustments, content-digest verification, and logical backup/restore round-trip verification. CI also runs the Operations modal workflow regression test.
 - If dedicated remote-test secrets are configured, CI also runs the full persistence suite against an empty disposable remote Turso database and the isolated foreign-key probe. The suite drops only the tables it creates.
-- Latest verified code test run: GitHub Actions run #62, commit `5646aefabc3eb2ea3409cd3a2af343d8c0f17e21`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, refusal of populated targets, a logical backup/restore round trip, binary BLOB preservation, all twelve persistence tests (12 passed, 0 failed), and the Operations modal regression test passed. The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
+- Latest verified code test run: GitHub Actions run #66, commit `6f1daacc50bf38facc9e51865e1b8e69186a732d`; dependency installation, syntax validation, the full 19-table SQLite-to-libSQL transfer fixture, refusal of populated migration and restore targets, a logical backup/restore round trip, binary BLOB preservation, all twelve persistence tests (12 passed, 0 failed), and the Operations modal regression test passed. Dependency audit reported zero vulnerabilities. Remote Turso steps remain skipped until the dedicated test secrets are configured. The remote Turso suite and foreign-key probe were skipped because the dedicated secrets were not configured.
 
 ## Foreign-key compatibility risk
 
@@ -422,3 +422,6 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - A static comparison found all 22 interaction custom IDs in `index.js` unchanged from `main`.
 - The Operations modal regression test now runs in CI and verifies field order/constraints, difficulty values and selection flow, squad size/participant rules, and that the modal still calls the async AAR persistence and existing evidence/review-message path.
 - These checks support the requirement to preserve the established Servitor workflow, but do not replace a live Discord test server acceptance run.
+
+
+- CI remote-test secret handling was hardened by moving the two dedicated Turso test secrets to job-level environment scope, so the step conditions can actually evaluate whether remote verification should run. The test suite still refuses any non-empty remote database before making schema changes.
