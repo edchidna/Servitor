@@ -64,6 +64,17 @@ async function initializeDatabase() {
       return client;
     } catch (error) {
       nextClient.close();
+
+      // Report useful connection diagnostics without exposing credentials.
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      const safeMessage = rawMessage
+        .split(config.url).join('[database-url]')
+        .split(config.authToken || '\u0000').join('[auth-token]');
+      const errorCode = error && typeof error === 'object' && error.code
+        ? String(error.code)
+        : (error && typeof error === 'object' && error.name ? String(error.name) : 'UnknownError');
+      console.error(`Turso connection failed (${errorCode}): ${safeMessage}`);
+
       throw new Error('Could not connect to the Turso database.', {
         cause: error
       });
