@@ -2,6 +2,8 @@
 
 A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge completions, Unproven Trials, Saga Points, member Honors, and Saga History profile cards.
 
+**Migration branch notice (20 November 2026):** `migration/turso` contains an in-progress conversion from SQLite to Turso. The current `main` branch remains the SQLite baseline. Do not deploy this migration branch yet: `@libsql/client` and its lockfile entry are still pending, and the database transfer/runtime/Discord tests have not been completed. See [TURSO_MIGRATION_NOTES.md](TURSO_MIGRATION_NOTES.md) for the actual migration status.
+
 **Documentation scope:** This manual describes the Servitor production repository and its current implementation as reviewed on 16 November 2026. It documents the production configuration and implemented behavior, including relevant limitations. It does not imply that future planned features are already available.
 
 ## Contents
@@ -626,9 +628,9 @@ The bot stores the leaderboard message ID in `bot_settings` and edits the saved 
 
 ## Database and persistence
 
-The project uses SQLite through `better-sqlite3`.
+The current `main` branch uses SQLite through `better-sqlite3`. The `migration/turso` branch is being converted to Turso/libSQL; it must not be treated as production-ready until the dependency, lockfile, migration rehearsal, and runtime tests are complete.
 
-The main database file is:
+The main SQLite database file on `main` is:
 
 ```text
 aar-database.db
