@@ -160,6 +160,13 @@ async function main() {
       throw new Error(`Source SQLite integrity check failed: ${integrity?.integrity_check || 'no result'}`);
     }
 
+    const foreignKeyViolations = source.prepare('PRAGMA foreign_key_check').all();
+    if (foreignKeyViolations.length > 0) {
+      throw new Error(
+        `Source SQLite database contains ${foreignKeyViolations.length} foreign-key violation(s). Refusing to transfer inconsistent data.`
+      );
+    }
+
     const sourceTables = new Set(
       source.prepare(`
         SELECT name FROM sqlite_master
