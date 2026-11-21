@@ -3280,7 +3280,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.commandName === 'honor') {
 
         if (!interaction.guild) {
-          await interaction.editReply({
+          await interaction.reply({
             content: 'Honor commands can only be used inside a server.',
             flags: MessageFlags.Ephemeral
           });
