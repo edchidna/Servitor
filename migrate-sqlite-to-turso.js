@@ -64,7 +64,7 @@ function rowsDigest(rows, columns) {
   for (const row of rows) {
     const canonicalRow = columns.map(column => canonicalValue(row[column]));
     hash.update(JSON.stringify(canonicalRow));
-    hash.update('\\n');
+    hash.update('\n');
   }
   return hash.digest('hex');
 }
