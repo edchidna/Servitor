@@ -549,3 +549,23 @@ The continued static audit found and corrected the following issues on `migratio
 - Complete a non-production hosting rehearsal for startup, readiness, shutdown, and restart behavior.
 
 The branch remains unmerged and undeployed. The production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without Ed's explicit approval.
+
+## Follow-up recovery and leaderboard audit (2026-11-21)
+
+A further pass focused on partial Discord submissions, review recovery, and concurrent leaderboard updates:
+
+- Trial submission cleanup now checks whether the database row is still pending and removes it before deleting the Discord review card. If a moderator already finalized the submission, the card is retained and the NCO channel is alerted instead of deleting a completed review.
+- Ordeal partial-message cleanup now searches Components V2 text-display content rather than legacy embeds, so a message created just before a Discord send timeout can be found.
+- Ordeal submission cleanup failures, post-decision review-card update failures, and failed reward-role rollback operations now generate NCO discrepancy alerts.
+- Migration row digests now use an actual newline byte as the row separator, avoiding ambiguous concatenation of JSON-serialized rows.
+- Temporary AAR evidence debug logs that included signed attachment URLs and user-provided filenames have been removed.
+- The bot now refreshes the persistent leaderboard on startup. Concurrent refresh requests are queued so simultaneous approvals cannot create duplicate leaderboard messages or leave a newer score snapshot unapplied.
+- The leaderboard title/footer now identify the combined total as Saga Points rather than an AAR-only score.
+
+### Latest validation after recovery changes
+
+- GitHub Actions run #192 on commit `b86d156701c0704df2c77390f0d41a5351a98109` completed successfully.
+- Dependency installation, syntax validation, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed.
+- The subsequent leaderboard wording change is text-only; no production or remote database was accessed.
+
+The same launch gates remain: real SQLite-copy migration rehearsal, remote backup/restore rehearsal, Discord test-server acceptance, and non-production hosting rehearsal. No merge, deployment, or production cutover has occurred.
