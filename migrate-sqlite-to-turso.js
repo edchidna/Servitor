@@ -185,15 +185,6 @@ async function main() {
     );
     if (unexpectedTables.length) {
       throw new Error(
-        `Source SQLite database contains unexpected application tables: ${unexpectedTables.join(', ')}. Review the source schema before transferring so no data is silently omitted.`
-      );
-    }
-
-    const unexpectedTables = [...sourceTables].filter(
-      table => !TABLES_IN_INSERT_ORDER.includes(table)
-    );
-    if (unexpectedTables.length) {
-      throw new Error(
         `Source SQLite database contains unrecognized tables: ${unexpectedTables.join(', ')}. Review and explicitly account for this data before transferring.`
       );
     }
