@@ -1985,7 +1985,7 @@ console.log('[AAR Fetched Message Debug]', {
 });
 
 console.log('[AAR Gallery Raw Debug]', JSON.stringify(
-  reviewMessage.components
+  fetchedReviewMessage.components
     .flatMap(container => container.components || [])
     .filter(component => component.type === 12)
     .map(gallery => gallery.items),
@@ -1993,7 +1993,7 @@ console.log('[AAR Gallery Raw Debug]', JSON.stringify(
   2
 ));
 
- const galleryItems = reviewMessage.components
+ const galleryItems = fetchedReviewMessage.components
   .flatMap(container => container.components || [])
   .filter(component => component.type === 12)
   .flatMap(gallery => gallery.items || []);
