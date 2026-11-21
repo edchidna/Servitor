@@ -5463,6 +5463,8 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         console.error('Ordeal submission error:', error);
 
         if (!submissionFinalized) {
+          const cleanupIssues = [];
+
           if (
             !reviewMessage &&
             reviewMessageCreationAttempted &&
@@ -5502,16 +5504,42 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
                 `Could not delete incomplete review message for Ordeal #${submissionId}:`,
                 cleanupError
               );
+              cleanupIssues.push(
+                `Could not delete incomplete review message ${reviewMessage.url}.`
+              );
             }
           }
 
           if (submissionId !== null) {
             try {
-              await ordealDatabase.deletePendingSubmission(submissionId);
+              const removed = await ordealDatabase.deletePendingSubmission(submissionId);
+              if (!removed) {
+                cleanupIssues.push(
+                  `Ordeal submission #${submissionId} was not removed as pending; inspect its current status.`
+                );
+              }
             } catch (cleanupError) {
               console.error(
                 `Could not remove incomplete Ordeal database row #${submissionId}:`,
                 cleanupError
+              );
+              cleanupIssues.push(
+                `Could not remove pending Ordeal database row #${submissionId}.`
+              );
+            }
+          }
+
+          if (cleanupIssues.length > 0) {
+            try {
+              await sendOrdealReviewAlert(
+                client,
+                `Ordeal #${submissionId || 'Unknown'} Submission Cleanup Needs Attention`,
+                cleanupIssues.join('\\n')
+              );
+            } catch (alertError) {
+              console.error(
+                `Could not send Ordeal submission cleanup alert for #${submissionId}:`,
+                alertError
               );
             }
           }
