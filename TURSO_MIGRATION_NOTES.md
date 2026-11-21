@@ -619,3 +619,9 @@ No live Discord server, production database, production backup, hosting service,
 - The user has chosen to skip a separate Discord test server and proceed with controlled functional validation in the existing live Discord server after the migration and hosting preconditions are met.
 - `LIVE_SERVER_CUTOVER_PLAN.md` records the one-instance cutover sequence, read-only-first checks, tightly controlled rejected validation submissions, role/points safeguards, and rollback triggers.
 - This changes the intended Discord acceptance environment only. It does not waive the separate production SQLite-copy migration rehearsal, remote Turso backup/restore rehearsal, hosting readiness checks, or explicit production cutover approval.
+
+### Backup-write durability follow-up
+
+- Logical backup output is now written to a same-directory temporary file, fsynced, closed, and renamed to its final UUID-suffixed filename only after the complete JSON payload is written. This reduces the risk of leaving a truncated file with a normal `.json` backup name if the process is interrupted during writing, while retaining collision-resistant/no-overwrite filenames.
+- Restore now rejects malformed AUTOINCREMENT metadata types, including null or string counters, negative values, duplicate names, and unknown table names. Regression assertions were added.
+- These final backup durability/validation changes are newer than CI run #248 and are awaiting a fresh validation result. They have not been run against a production database or backup.
