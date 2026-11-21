@@ -581,3 +581,14 @@ The same launch gates remain: real SQLite-copy migration rehearsal, remote backu
 
 - GitHub Actions run #206 on commit `eab6fc75a4a2dd5c9433d36e2ef0856aea5b30bb` completed successfully.
 - Dependency installation, JavaScript syntax checks, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed.
+
+## Final documentation and user-facing workflow consistency pass (2026-11-21)
+
+- Updated the README's active-branch instructions to describe Turso/libSQL persistence, required Turso environment variables, the current database modules, logical backup/restore behavior, and the actual npm validation scripts. Legacy SQLite details are identified as historical migration-source context rather than the active runtime.
+- Corrected the README's Trial review rule: the submitter, Trial Completers, and Pack Members cannot review their own Trial submission.
+- Added the /sagapoint add and /sagapoint deduct commands to the README command reference and corrected Saga Points terminology.
+- Corrected the AAR panel description so it lists all accepted reviewer groups: server Administrators, configured Admins, NCOs, and AAR Moderators/High Command.
+- Removed unused Ordeal base-point values from the challenge definitions and selection display. Ordeals are challenge/role-reward workflows and must not appear to offer point rewards.
+- These latest source/documentation changes were pushed to migration/turso. A fresh GitHub Actions validation run has been triggered; its result must be checked before treating this revision as CI-verified.
+
+No Discord test server, production database, production backup, hosting service, or live bot was accessed. No merge, deployment, or production cutover occurred.
