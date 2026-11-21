@@ -645,7 +645,7 @@ The bot maintains an all-time top-10 leaderboard in `LEADERBOARD_CHANNEL_ID`.
 
 The leaderboard includes:
 
-- Approved regular AAR points.
+- Approved regular AAR report points (credited as Saga Points).
 - Approved Trial Pack Member points.
 
 It excludes:
