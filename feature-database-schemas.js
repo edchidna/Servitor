@@ -152,17 +152,21 @@ async function initializeHonorSchema() {
       CREATE INDEX IF NOT EXISTS idx_honor_awards_member
       ON honor_awards(guild_id, user_id)
     `);
-    await tx.execute(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_honor_active_unique
-      ON honor_awards(guild_id, user_id, honor_id)
-      WHERE is_active = 1
-    `);
+    // Repeated active copies of the same Honor are intentionally allowed.
+    await tx.execute('DROP INDEX IF EXISTS idx_honor_active_unique');
 
-    const defaultHonors = Array.from({ length: 10 }, (_, index) => [
-      `honor_${index + 1}`,
-      `Honor ${index + 1}`,
-      index + 1
-    ]);
+    const defaultHonors = [
+      ['honor_1', 'Conversion Ward', 1],
+      ['honor_2', 'Rune', 2],
+      ['honor_3', 'Gem', 3],
+      ['honor_4', 'Fang Necklace', 4],
+      ['honor_5', 'Talisman', 5],
+      ['honor_6', 'Crux Terminatus', 6],
+      ['honor_7', 'Honor 7', 7],
+      ['honor_8', 'Honor 8', 8],
+      ['honor_9', 'Honor 9', 9],
+      ['honor_10', 'Honor 10', 10]
+    ];
 
     for (const [honorId, displayName, displayOrder] of defaultHonors) {
       await tx.execute({
@@ -173,16 +177,20 @@ async function initializeHonorSchema() {
         `,
         args: [honorId, displayName, displayOrder]
       });
+      // Replace only the old generic seed labels; preserve user renames.
+      await tx.execute({
+        sql: 'UPDATE honors SET display_name = ? WHERE honor_id = ? AND display_name = ?',
+        args: [displayName, honorId, `Honor ${displayOrder}`]
+      });
     }
 
-    // Preserve the existing behavior: these five built-in paths are assigned
-    // on every startup, while display names and display order remain untouched.
     const honorIcons = [
       ['honor_1', 'assets/honors/Conversion ward.png'],
-      ['honor_2', 'assets/honors/Crux Terminatus.png'],
-      ['honor_3', 'assets/honors/Fang Necklace.png'],
-      ['honor_4', 'assets/honors/Gem.png'],
-      ['honor_5', 'assets/honors/Rune.png']
+      ['honor_2', 'assets/honors/Rune.png'],
+      ['honor_3', 'assets/honors/Gem.png'],
+      ['honor_4', 'assets/honors/Fang Necklace.png'],
+      ['honor_5', 'assets/honors/Talisman.png'],
+      ['honor_6', 'assets/honors/Crux Terminatus.png']
     ];
 
     for (const [honorId, iconPath] of honorIcons) {
