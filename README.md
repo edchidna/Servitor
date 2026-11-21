@@ -119,6 +119,8 @@ The bot reads configuration from `.env`.
 | `DISCORD_TOKEN` | Bot token used to log in to Discord |
 | `CLIENT_ID` | Discord application/client ID; used by `deploy-commands.js` |
 | `GUILD_ID` | Discord server ID where slash commands are registered |
+| `TURSO_DATABASE_URL` | Turso/libSQL database URL used by the bot and migration tools |
+| `TURSO_AUTH_TOKEN` | Read-write authentication token for the configured remote Turso database |
 | `REPORT_CHANNEL_ID` | Channel where an administrator publishes the AAR submission panel |
 | `REVIEW_CHANNEL_ID` | Channel receiving Operations, Stratagems, Siege, and PVP reports for review |
 | `LEADERBOARD_CHANNEL_ID` | Channel where the persistent Saga Points leaderboard is posted or updated |
