@@ -929,12 +929,14 @@ async function processTrialReviewDecision(interaction) {
 
     try {
         if (!interaction.guild) {
-            await interaction.reply({
-                content: 'Trial reviews can only be performed inside the server.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'Trial reviews can only be performed inside the server.'
             });
             return true;
         }
+
+        // Acknowledge before fetching Discord members or reading the database.
+        await interaction.deferReply({ ephemeral: true });
 
         // Fetch the reviewer as a full GuildMember.
         const reviewer = await interaction.guild.members.fetch(interaction.user.id);
@@ -947,18 +949,16 @@ async function processTrialReviewDecision(interaction) {
             memberHasRole(reviewer, MODERATOR_ROLE_ID);
 
         if (!isAuthorized) {
-            await interaction.reply({
-                content: 'You do not have permission to review Unproven Trial submissions.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'You do not have permission to review Unproven Trial submissions.'
             });
             return true;
         }
 
         // Reviews must take place in the configured Trial review channel.
         if (interaction.channelId !== TRIAL_REVIEW_CHANNEL_ID) {
-            await interaction.reply({
-                content: 'Trial submissions must be reviewed in the designated Trial review channel.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'Trial submissions must be reviewed in the designated Trial review channel.'
             });
             return true;
         }
@@ -967,25 +967,22 @@ async function processTrialReviewDecision(interaction) {
         const submission = await trialDatabase.getTrialSubmission(submissionId);
 
         if (!submission) {
-            await interaction.reply({
-                content: 'This Trial submission could not be found.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'This Trial submission could not be found.'
             });
             return true;
         }
 
         if (submission.status !== 'pending') {
-            await interaction.reply({
-                content: `This submission has already been ${submission.status}.`,
-                ephemeral: true
+            await interaction.editReply({
+                content: `This submission has already been ${submission.status}.`
             });
             return true;
         }
 
         if (String(submission.review_message_id) !== String(interaction.message.id)) {
-            await interaction.reply({
-                content: 'This button does not belong to the original Trial review message.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'This button does not belong to the original Trial review message.'
             });
             return true;
         }
@@ -999,14 +996,11 @@ async function processTrialReviewDecision(interaction) {
         ].some(member => member.user_id === interaction.user.id);
 
         if (isSubmitter || isParticipant) {
-            await interaction.reply({
-                content: 'You cannot review a Trial submission that you submitted or participated in.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'You cannot review a Trial submission that you submitted or participated in.'
             });
             return true;
         }
-
-        await interaction.deferReply({ ephemeral: true });
 
         // Check Pack Members' current Unproven role status at review time.
         const packMemberRoleStatuses = {};
