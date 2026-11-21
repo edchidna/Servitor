@@ -515,3 +515,37 @@ These are code-level changes and a test has been added; the latest GitHub Action
 - The CI test database is now reserved for serialized smoke-test runs only. Do not reuse it as a migration or restore target.
 
 The successful CI runs establish remote persistence behavior for the synthetic smoke-test cases. They do not replace the remaining real-database migration rehearsal, remote backup/restore rehearsal, Discord test-server acceptance, or non-production hosting rehearsal.
+
+## Runtime code audit hardening (2026-11-21)
+
+The continued static audit found and corrected the following issues on `migration/turso`:
+
+- Fixed the `/sagapoint` DM guard so it sends an initial ephemeral reply instead of editing a response that does not exist.
+- Added a Trial review self-review restriction covering the submitter, Trial Completers, and Pack Members.
+- Corrected leaderboard row separators so entries render on separate lines.
+- Restricted automatic Veteran promotion to members who have the configured Iron Wolves role.
+- Moved Trial and Ordeal submission acknowledgements ahead of network/database work, and moved Trial review acknowledgement ahead of reviewer/member and submission lookups.
+- Moved the AAR panel command acknowledgement ahead of its channel fetch and message send.
+- Added startup validation for required runtime destinations and the Discord token so missing configuration fails before the bot appears online.
+- Rejected bot accounts in AAR and Ordeal squads.
+- Added expiration for abandoned multi-step Ordeal workflows.
+- Changed AAR evidence gallery extraction to use the fetched review message rather than the original send response.
+- Corrected failed AAR submission cleanup to delete participant rows before the parent report, respecting enforced foreign keys.
+- Preserved existing Iron Wolves tenure timestamps during startup initialization and role-add handling instead of overwriting them.
+
+### Latest automated validation
+
+- GitHub Actions run #158 on commit `efa6da86ad8bf20f591a38f26655fc95384443a3` completed successfully.
+- Dependency installation, JavaScript syntax checks, local libSQL tests, and the Operations modal regression test passed.
+- The full persistence suite passed against the dedicated disposable remote Turso database.
+- The remote foreign-key enforcement probe passed.
+- This CI result validates the tested persistence and static workflow paths; it does not prove live Discord behavior, real-database migration, remote backup/restore recovery, or hosting-provider runtime behavior.
+
+### Remaining acceptance gates
+
+- Complete a migration rehearsal using a disposable copy of the actual SQLite database.
+- Complete a remote Turso logical backup and restore rehearsal into a separate clean disposable database.
+- Complete Discord test-server acceptance for AAR, Ordeal, Trial, Honors, Saga adjustments, leaderboard, role changes, evidence uploads, and restart/recovery.
+- Complete a non-production hosting rehearsal for startup, readiness, shutdown, and restart behavior.
+
+The branch remains unmerged and undeployed. The production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without Ed's explicit approval.
