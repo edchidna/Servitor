@@ -57,15 +57,30 @@ function createLeaderboardEmbed(scores) {
 }
 
 let leaderboardRefreshPromise = null;
+let leaderboardRefreshRequested = false;
 
 async function refreshLeaderboard(client) {
-  if (leaderboardRefreshPromise) return leaderboardRefreshPromise;
+  if (leaderboardRefreshPromise) {
+    // Coalesce overlapping requests but run one more pass so scores written
+    // during the active refresh are not left off the persistent leaderboard.
+    leaderboardRefreshRequested = true;
+    return leaderboardRefreshPromise;
+  }
 
-  leaderboardRefreshPromise = refreshLeaderboardInternal(client);
+  leaderboardRefreshPromise = (async () => {
+    let message;
+    do {
+      leaderboardRefreshRequested = false;
+      message = await refreshLeaderboardInternal(client);
+    } while (leaderboardRefreshRequested);
+    return message;
+  })();
+
   try {
     return await leaderboardRefreshPromise;
   } finally {
     leaderboardRefreshPromise = null;
+    leaderboardRefreshRequested = false;
   }
 }
 
