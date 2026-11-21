@@ -3129,9 +3129,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (!executor) {
-          await interaction.reply({
-            content: 'Could not verify your server permissions.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'Could not verify your server permissions.'
           });
           return;
         }
@@ -3151,10 +3150,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
 
         if (!canManageSagaPoints) {
-          await interaction.reply({
-            content:
-              'You need the Admin, NCO, or High Command role to manage Saga Points.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'You need the Admin, NCO, or High Command role to manage Saga Points.'
           });
           return;
         }
@@ -3164,9 +3161,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           requestedPoints <= 0 ||
           !reason
         ) {
-          await interaction.reply({
-            content: 'Please provide a valid amount and reason.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'Please provide a valid amount and reason.'
           });
           return;
         }
@@ -3189,9 +3185,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (!targetMember) {
-          await interaction.reply({
-            content: 'The selected member could not be found in this server.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'The selected member could not be found in this server.'
           });
           return;
         }
@@ -3221,18 +3216,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
 
-        try {
-          adjustment = applyAdjustment();
-        } catch (error) {
-          console.error('Saga Point adjustment failed:', error);
-
-          await interaction.editReply({
-            content: 'The Saga Point adjustment failed. No changes were saved.'
-          });
-          return;
-        }
-
-        // --------------------------------------
         // REFRESH LEADERBOARD
         // --------------------------------------
 
