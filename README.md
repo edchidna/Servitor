@@ -278,7 +278,7 @@ The submitter selects:
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included, so a squad can contain up to three unique members.
 
@@ -307,7 +307,7 @@ The submitter selects:
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included. Maximum squad size is three.
 
@@ -318,7 +318,7 @@ The submitter enters:
 - Difficulty: Normal or Hard.
 - A positive whole number of waves completed.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included. Maximum squad size is three. Scoring counts completed groups of five waves; incomplete groups do not add base points.
 
@@ -329,7 +329,7 @@ The submitter selects:
 - Game mode: Capture and Control, Seize Ground, Annihilation, or Helbrute Onslaught.
 - Result: Victory or Defeat.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included. Maximum squad size is three.
 
@@ -337,7 +337,7 @@ The submitter is automatically included. Maximum squad size is three.
 
 For regular AAR submissions, the bot:
 
-1. Receives one to six uploaded files.
+1. Receives one to six uploaded files (10 MB maximum per file).
 2. Downloads the original files.
 3. Generates an evidence collage when supported image files are present.
 4. Posts a review embed in `REVIEW_CHANNEL_ID`.
@@ -461,7 +461,7 @@ Depending on the challenge, the form collects:
 - Operation name for Operations-based challenges.
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 A squad must contain between one and three unique participants. Challenge completers must be included among the participants; the submitter and completers cannot be selected again as additional teammates.
 
@@ -493,7 +493,7 @@ The Trial panel is published in `TRIAL_PANEL_CHANNEL_ID` by the bot's startup ro
 - One or two Trial Completers.
 - Trial 1, Trial 2, or Trial 3.
 - One or two Pack Members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 Validation rules:
 
@@ -501,7 +501,7 @@ Validation rules:
 - At least one Pack Member must have the configured NCO role.
 - The combined squad cannot exceed three participants.
 - Participants must be valid, non-bot members of the server.
-- Each evidence file is limited to 10 MB by the Trial submission handler.
+- Each evidence file is limited to 10 MB by the submission handler.
 
 The submission is sent to `TRIAL_REVIEW_CHANNEL_ID`. A collage is attached when possible, and original evidence files are stored in a thread under the review message.
 
