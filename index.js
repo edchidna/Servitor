@@ -4720,9 +4720,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const selectedAdditionalParticipants = interaction.fields
         .getSelectedUsers('ordeal_additional_participants');
+      const selectedAdditionalUsers = [
+        ...(selectedAdditionalParticipants?.values() || [])
+      ];
       const selectedAdditionalIds = [
         ...new Set(selectedAdditionalParticipants?.keys() || [])
       ];
+
+      if (selectedAdditionalUsers.some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as Ordeal participants.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
 
       const completerIdSet = new Set(completerIds);
       const additionalParticipantIds = selectedAdditionalIds;
@@ -4864,6 +4875,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.deferReply({
         flags: MessageFlags.Ephemeral
       });
+
+      if (!interaction.guild) {
+        await interaction.editReply({
+          content: 'Ordeal submissions must be made inside the server.'
+        });
+        pendingOrdealWorkflows.delete(interaction.user.id);
+        return;
+      }
+
+      const participantMembers = await Promise.all(
+        participants.map(userId => interaction.guild.members.fetch(userId))
+      );
+      if (participantMembers.some(member => member.user.bot)) {
+        await interaction.editReply({
+          content: 'Bots cannot be selected as Ordeal participants or challenge completers.'
+        });
+        pendingOrdealWorkflows.delete(interaction.user.id);
+        return;
+      }
 
       // ----------------------------------
       // CHECK PREVIOUS SUBMISSIONS
@@ -5463,13 +5493,17 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_squad');
+      const selectedSquadUsers = [
+        ...(selectedSquad?.values() || [])
+      ];
       const selectedUserIds = [
         ...(selectedSquad?.keys() || [])
       ];
 
       if (
         selectedUserIds.length > 2 ||
-        selectedUserIds.some(id => typeof id !== 'string')
+        selectedUserIds.some(id => typeof id !== 'string') ||
+        selectedSquadUsers.some(user => user.bot)
       ) {
         deleteOperationsWorkflow(interaction.user.id, difficulty);
         await interaction.reply({
@@ -5705,6 +5739,14 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_stratagems_squad');
 
+      if ([...(selectedSquad?.values() || [])].some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as squad members.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
       const selectedTeammateIds = [
         ...(selectedSquad?.keys() || [])
       ]
@@ -5875,6 +5917,14 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_pvp_squad');
+
+      if ([...(selectedSquad?.values() || [])].some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as squad members.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
 
       const selectedTeammateIds = [
         ...new Set(
@@ -6065,6 +6115,14 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_siege_squad');
+
+      if ([...(selectedSquad?.values() || [])].some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as squad members.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
 
       const selectedTeammateIds = [
         ...(selectedSquad?.keys() || [])
