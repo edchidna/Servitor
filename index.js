@@ -6230,6 +6230,9 @@ async function checkVeteranPromotion() {
       for (const member of members.values()) {
         if (member.user.bot) continue;
 
+        // Veteran promotion applies only to Iron Wolves members.
+        if (!member.roles.cache.has(process.env.IRON_WOLVES_ROLE_ID)) continue;
+
         // Skip members who already have Veteran.
         if (member.roles.cache.has(VETERAN_ROLE_ID)) continue;
 
