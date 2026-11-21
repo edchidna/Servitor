@@ -638,6 +638,11 @@ async function handleTrialSubmission(interaction) {
     let reviewMessage = null;
 
     try {
+        // Acknowledge immediately before any guild or database network calls.
+        await interaction.deferReply({
+            flags: 64
+        });
+
         // ----------------------------------
         // READ FORM ANSWERS
         // ----------------------------------
@@ -693,14 +698,6 @@ async function handleTrialSubmission(interaction) {
             completers,
             packMembers
         );
-
-        // ----------------------------------
-        // DEFER RESPONSE
-        // ----------------------------------
-
-        await interaction.deferReply({
-            flags: 64
-        });
 
         // ----------------------------------
         // DOWNLOAD EVIDENCE
