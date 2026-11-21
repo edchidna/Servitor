@@ -367,7 +367,7 @@ The local automated suite is now running successfully; it is not a substitute fo
 - Added npm scripts: `npm run backup` for the Turso logical JSON export and `npm run migrate:sqlite-to-turso` for the one-time SQLite transfer utility.
 - Updated the README to clearly state that `main` remains the SQLite production baseline and `migration/turso` is not deployable yet.
 - The transfer utility now checks SQLite `integrity_check`, requires every expected application table to exist, holds one source read snapshot, imports each table transactionally, and verifies imported row counts (or Honor IDs) before proceeding.
-- The backup reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads. A matching `restore-database.js` now restores into a clean target only, validates backup format/schema version/table inventory, preserves the seeded Honor records through upsert, and verifies every restored table by row count and content digest, then restores and verifies AUTOINCREMENT counters. The end-to-end local test now exercises SQLite migration, JSON backup, and restore to a second database.
+- The backup reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads. A matching `restore-database.js` now restores into a clean target only, validates backup format/schema version/table inventory, replaces the clean seeded Honor rows transactionally while restoring the backup's Honor configuration, and verifies every restored table by row count and content digest, then restores and verifies AUTOINCREMENT counters. The end-to-end local test now exercises SQLite migration, JSON backup, and restore to a second database.
 
 The branch has not been merged, deployed, or tested against a live Turso database.
 
@@ -613,3 +613,9 @@ No live Discord server, production database, production backup, hosting service,
 - GitHub Actions run #248 on commit `26b1f21c5fcd50c1dba2aea6fa2ed91f6e4c8580` completed successfully.
 - The run passed dependency installation, syntax checks, the expanded local SQLite → libSQL → logical backup → restore end-to-end test (including deliberately elevated AUTOINCREMENT high-water marks), the Operations modal regression, the full remote Turso persistence suite, and the remote foreign-key probe.
 - README and migration notes were updated afterward; those follow-up commits are documentation-only.
+
+## Live-server validation approach (user decision, 2026-11-21)
+
+- The user has chosen to skip a separate Discord test server and proceed with controlled functional validation in the existing live Discord server after the migration and hosting preconditions are met.
+- `LIVE_SERVER_CUTOVER_PLAN.md` records the one-instance cutover sequence, read-only-first checks, tightly controlled rejected validation submissions, role/points safeguards, and rollback triggers.
+- This changes the intended Discord acceptance environment only. It does not waive the separate production SQLite-copy migration rehearsal, remote Turso backup/restore rehearsal, hosting readiness checks, or explicit production cutover approval.
