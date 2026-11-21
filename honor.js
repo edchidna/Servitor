@@ -2,6 +2,19 @@
 
 const database = require('./turso-database');
 
+const HONOR_METADATA = {
+  honor_1: { subtitle: 'Good community member', description: 'A mark of recognition bestowed upon a warrior who has demonstrated unwavering faith.' },
+  honor_2: { subtitle: 'Good team player', description: 'An honor awarded to warriors who have displayed exceptional wisdom, battlefield awareness, and tactical ingenuity.' },
+  honor_3: { subtitle: 'Very good solo player', description: 'A distinction reserved for warriors who have demonstrated exceptional valor, skill, and distinction in combat.' },
+  honor_4: { subtitle: 'Gene-Seed Extraction', description: 'An honor bestowed upon warriors who have successfully recovered the gene-seed of fallen pack-brothers from the field of battle.' },
+  honor_5: { subtitle: 'Priesthood Award', description: 'A sacred honor bestowed exclusively by the Priesthood of the Iron Wolves upon warriors who have demonstrated exceptional devotion, purity of purpose, and unwavering loyalty to the Allfather and the Great Company.' },
+  honor_6: { subtitle: 'Completion of the Terminator Trials', description: 'One of the highest honors a Space Marine can bear, traditionally associated with veterans who have earned the right to wear Terminator armor.' }
+};
+
+function getHonorMetadata(honorId) {
+  return HONOR_METADATA[honorId] || { subtitle: '', description: '' };
+}
+
 async function getAllHonors() {
   const result = await database.execute(`
     SELECT honor_id, display_name, display_order, icon_path
@@ -20,11 +33,12 @@ async function getHonorById(honorId) {
 
 async function getMemberHonors(guildId, userId) {
   const result = await database.execute({
-    sql: `SELECT ha.id, ha.honor_id, h.display_name, h.display_order, h.icon_path,
-                 ha.awarded_by, ha.awarded_at
+    sql: `SELECT h.honor_id, h.display_name, h.display_order, h.icon_path,
+                 COUNT(*) AS count, MIN(ha.awarded_at) AS first_awarded_at
           FROM honor_awards ha
           INNER JOIN honors h ON h.honor_id = ha.honor_id
           WHERE ha.guild_id = ? AND ha.user_id = ? AND ha.is_active = 1
+          GROUP BY h.honor_id, h.display_name, h.display_order, h.icon_path
           ORDER BY h.display_order ASC`,
     args: [guildId, userId]
   });
@@ -40,26 +54,22 @@ async function awardHonor(guildId, userId, honorId, moderatorId) {
     const honor = found.rows[0];
     if (!honor) return { success: false, message: 'This Honor does not exist.' };
 
-    const existing = await tx.execute({
-      sql: `SELECT id FROM honor_awards
+    await tx.execute({
+      sql: `INSERT INTO honor_awards (guild_id, user_id, honor_id, awarded_by)
+            VALUES (?, ?, ?, ?)`,
+      args: [guildId, userId, honorId, moderatorId]
+    });
+    const countResult = await tx.execute({
+      sql: `SELECT COUNT(*) AS count FROM honor_awards
             WHERE guild_id = ? AND user_id = ? AND honor_id = ? AND is_active = 1`,
       args: [guildId, userId, honorId]
     });
-    if (existing.rows.length) return { success: false, message: 'This member already has this Honor.' };
-
-    try {
-      await tx.execute({
-        sql: `INSERT INTO honor_awards (guild_id, user_id, honor_id, awarded_by)
-              VALUES (?, ?, ?, ?)`,
-        args: [guildId, userId, honorId, moderatorId]
-      });
-    } catch (error) {
-      if (/UNIQUE constraint failed/i.test(String(error.message))) {
-        return { success: false, message: 'This member already has this Honor.' };
-      }
-      throw error;
-    }
-    return { success: true, message: `${honor.display_name} awarded successfully.`, honor };
+    return {
+      success: true,
+      message: `${honor.display_name} awarded successfully.`,
+      honor,
+      count: Number(countResult.rows[0]?.count || 1)
+    };
   });
 }
 
@@ -67,7 +77,8 @@ async function removeHonor(guildId, userId, honorId, moderatorId) {
   return database.withTransaction(async tx => {
     const active = await tx.execute({
       sql: `SELECT id FROM honor_awards
-            WHERE guild_id = ? AND user_id = ? AND honor_id = ? AND is_active = 1`,
+            WHERE guild_id = ? AND user_id = ? AND honor_id = ? AND is_active = 1
+            ORDER BY awarded_at ASC, id ASC LIMIT 1`,
       args: [guildId, userId, honorId]
     });
     if (!active.rows.length) return { success: false, message: 'This member does not have this active Honor.' };
@@ -145,14 +156,16 @@ async function getHonorDisplayLayout(guildId, userId) {
     });
     const layoutMode = setting.rows[0]?.layout_mode || 'fixed';
     const result = await tx.execute({
-      sql: `SELECT ha.id, ha.honor_id, h.display_name, h.display_order, h.icon_path, ha.awarded_at
+      sql: `SELECT h.honor_id, h.display_name, h.display_order, h.icon_path,
+                   COUNT(*) AS count, MIN(ha.awarded_at) AS first_awarded_at
             FROM honor_awards ha
             INNER JOIN honors h ON h.honor_id = ha.honor_id
             WHERE ha.guild_id = ? AND ha.user_id = ? AND ha.is_active = 1
-            ORDER BY ha.awarded_at ASC, ha.id ASC`,
+            GROUP BY h.honor_id, h.display_name, h.display_order, h.icon_path
+            ORDER BY MIN(ha.awarded_at) ASC`,
       args: [guildId, userId]
     });
-    const active = result.rows;
+    const active = result.rows.map(row => ({ ...row, count: Number(row.count || 1) }));
     const leftColumn = Array(5).fill(null);
     const rightColumn = Array(5).fill(null);
     if (layoutMode === 'fixed') {
@@ -173,5 +186,5 @@ async function getHonorDisplayLayout(guildId, userId) {
 module.exports = {
   getAllHonors, getHonorById, getMemberHonors, awardHonor, removeHonor,
   getMemberHonorHistory, renameHonor, getHonorLayout, setHonorLayout,
-  getHonorDisplayLayout
+  getHonorDisplayLayout, getHonorMetadata
 };
