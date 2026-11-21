@@ -466,10 +466,15 @@ async function downloadTrialEvidence(uploadedFiles) {
 
     for (const file of uploadedFiles.values()) {
 
-        // Check individual file size (10 MB maximum)
-        if (file.size > 10 * 1024 * 1024) {
+        // Check individual file size (10 MB maximum).
+        const maxFileBytes = 10 * 1024 * 1024;
+        if (
+            !Number.isSafeInteger(file.size) ||
+            file.size <= 0 ||
+            file.size > maxFileBytes
+        ) {
             throw new Error(
-                `Evidence file "${file.name}" exceeds the 10 MB limit.`
+                `Evidence file "${file.name}" must be between 1 byte and 10 MB.`
             );
         }
 
@@ -480,7 +485,9 @@ async function downloadTrialEvidence(uploadedFiles) {
             );
         }
 
-        const response = await fetch(file.url);
+        const response = await fetch(file.url, {
+            signal: AbortSignal.timeout(30_000)
+        });
 
         if (!response.ok) {
             throw new Error(
@@ -488,9 +495,21 @@ async function downloadTrialEvidence(uploadedFiles) {
             );
         }
 
+        const contentLength = Number(response.headers.get('content-length'));
+        if (Number.isFinite(contentLength) && contentLength > maxFileBytes) {
+            throw new Error(
+                `Evidence file "${file.name}" exceeds the 10 MB limit.`
+            );
+        }
+
         const buffer = Buffer.from(
             await response.arrayBuffer()
         );
+        if (buffer.length > maxFileBytes) {
+            throw new Error(
+                `Evidence file "${file.name}" exceeds the 10 MB limit.`
+            );
+        }
 
         evidenceFiles.push({
             name: file.name,
