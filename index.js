@@ -5475,9 +5475,13 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
               });
               reviewMessage = recentMessages.find(message =>
                 message.author?.id === client.user.id &&
-                message.embeds.some(embed =>
-                  embed.title === `Ordeal Completion #${submissionId}`
-                )
+                message.components
+                  .flatMap(container => container.components || [])
+                  .some(component =>
+                    component.type === 10 &&
+                    typeof component.content === 'string' &&
+                    component.content.includes(`Ordeal #${submissionId}`)
+                  )
               ) || null;
             } catch (cleanupError) {
               console.error(
