@@ -569,3 +569,15 @@ A further pass focused on partial Discord submissions, review recovery, and conc
 - The subsequent leaderboard wording change is text-only; no production or remote database was accessed.
 
 The same launch gates remain: real SQLite-copy migration rehearsal, remote backup/restore rehearsal, Discord test-server acceptance, and non-production hosting rehearsal. No merge, deployment, or production cutover has occurred.
+
+## Evidence handling hardening (2026-11-21)
+
+- Standardized AAR, Ordeal, and Trial evidence uploads to a maximum of six files, 10 MB per file.
+- Added a 30-second download timeout, Discord content-length checks, and post-download buffer-size checks.
+- Updated modal descriptions and README guidance to disclose the 10 MB per-file limit.
+- Sanitized and uniquified Ordeal attachment filenames using the same safe naming logic as AAR evidence.
+
+### Validation
+
+- GitHub Actions run #206 on commit `eab6fc75a4a2dd5c9433d36e2ef0856aea5b30bb` completed successfully.
+- Dependency installation, JavaScript syntax checks, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed.
