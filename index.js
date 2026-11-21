@@ -339,7 +339,7 @@ async function createSagaHistoryCard({
               font-family="Pirata One, sans-serif"
               font-size="28"
               font-weight="700"
-        >${escapeSvgText(item.display_name)}</text>
+        >${escapeSvgText(item.display_name + (Number(item.count || 1) > 1 ? ` ×${item.count}` : ''))}</text>
       `;
     }).join('');
   };
@@ -3426,6 +3426,48 @@ client.on(Events.InteractionCreate, async (interaction) => {
             interaction.user.id
           );
 
+          if (result.success) {
+            const metadata = honor.getHonorMetadata(honorId);
+            const embed = {
+              title: `${selectedHonor.display_name} — ${metadata.subtitle || 'Honor Awarded'}`,
+              description: metadata.description || 'An Honor has been bestowed upon a warrior.',
+              color: 0xC6A664,
+              fields: [
+                { name: 'Recipient', value: `<@\${member.id}>`, inline: true },
+                { name: 'Total Honor', value: `×${result.count}`, inline: true }
+              ],
+              timestamp: new Date().toISOString()
+            };
+            const announcementPayload = {
+              content: `🐺 Honor bestowed upon <@\${member.id}>!`,
+              embeds: [embed],
+              allowedMentions: { users: [member.id] }
+            };
+            try {
+              const path = require('path');
+              const fs = require('fs');
+              const iconPath = path.resolve(__dirname, selectedHonor.icon_path || '');
+              const honorsDirectory = path.resolve(__dirname, 'assets', "honors");
+              if (selectedHonor.icon_path && iconPath.startsWith(honorsDirectory + path.sep) && fs.existsSync(iconPath)) {
+                const attachment = new AttachmentBuilder(iconPath, { name: path.basename(iconPath) });
+                announcementPayload.files = [attachment];
+                embed.thumbnail = { url: `attachment://${path.basename(iconPath)}` };
+              }
+              if (!interaction.channel || typeof interaction.channel.send !== 'function') {
+                throw new Error('The command channel cannot send public messages.');
+              }
+              await interaction.channel.send(announcementPayload);
+            } catch (announcementError) {
+              console.error('Honor was awarded but public announcement failed:', announcementError);
+              await interaction.editReply({
+                content: `Honor saved for <@\${member.id}>, but the public announcement failed to send. Do not award it again.`,
+                flags: MessageFlags.Ephemeral,
+                allowedMentions: { parse: [] }
+              });
+              return;
+            }
+          }
+
           await interaction.editReply({
             content: result.success
               ? `**${selectedHonor.display_name}** has been awarded to <@${member.id}>.`
@@ -3520,7 +3562,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
           const description = memberHonors.length
             ? memberHonors.map(item =>
-              `• **${item.display_name}**`
+              `• **${item.display_name}${Number(item.count || 1) > 1 ? ` ×${item.count}` : ''}**`
             ).join('\n')
             : 'This member has not earned any Honors yet.';
 
