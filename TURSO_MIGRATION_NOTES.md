@@ -625,3 +625,9 @@ No live Discord server, production database, production backup, hosting service,
 - Logical backup output is now written to a same-directory temporary file, fsynced, closed, and renamed to its final UUID-suffixed filename only after the complete JSON payload is written. This reduces the risk of leaving a truncated file with a normal `.json` backup name if the process is interrupted during writing, while retaining collision-resistant/no-overwrite filenames.
 - Restore now rejects malformed AUTOINCREMENT metadata types, including null or string counters, negative values, duplicate names, and unknown table names. Regression assertions were added.
 - These final backup durability/validation changes are newer than CI run #248 and are awaiting a fresh validation result. They have not been run against a production database or backup.
+
+### Final backup durability and metadata validation
+
+- GitHub Actions run #268 completed successfully after the atomic backup-write and strict AUTOINCREMENT metadata validation changes.
+- Dependency installation, JavaScript syntax checks, local SQLite/libSQL migration and backup/restore tests, Operations modal regression, all remote Turso persistence tests, and remote foreign-key enforcement all passed.
+- The latest migration-branch code is CI-green. This still does not substitute for the real production SQLite-copy migration rehearsal, remote backup/restore rehearsal, or live-server cutover checks.
