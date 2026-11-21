@@ -76,6 +76,83 @@ function getPrimaryKeyColumns(columns) {
     .map(column => column.name);
 }
 
+function getAutoIncrementState(source) {
+  const tables = source.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND sql LIKE '%AUTOINCREMENT%'
+    ORDER BY name
+  `).all().map(row => row.name);
+
+  const sequences = source.prepare(
+    'SELECT name, seq FROM sqlite_sequence ORDER BY name'
+  ).all();
+
+  const allowed = new Set(tables);
+  const state = sequences.map(row => {
+    if (!allowed.has(row.name)) {
+      throw new Error(`SQLite sequence references an unexpected table: ${row.name}`);
+    }
+    const sequence = Number(row.seq);
+    if (!Number.isSafeInteger(sequence) || sequence < 0) {
+      throw new Error(`SQLite sequence for ${row.name} is not a safe non-negative integer.`);
+    }
+    return { name: row.name, seq: sequence };
+  });
+
+  return { tables, sequences: state };
+}
+
+async function restoreAutoIncrementState(target, state) {
+  const targetTables = await target.execute(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND sql LIKE '%AUTOINCREMENT%'
+    ORDER BY name
+  `);
+  const names = targetTables.rows.map(row => row.name);
+  if (JSON.stringify(names) !== JSON.stringify(state.tables)) {
+    throw new Error(
+      `AUTOINCREMENT table inventory mismatch: source=[${state.tables.join(', ')}], target=[${names.join(', ')}].`
+    );
+  }
+
+  const tx = await target.transaction('write');
+  try {
+    for (const table of names) {
+      await tx.execute({
+        sql: 'DELETE FROM sqlite_sequence WHERE name = ?',
+        args: [table]
+      });
+    }
+    for (const row of state.sequences) {
+      await tx.execute({
+        sql: 'INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)',
+        args: [row.name, row.seq]
+      });
+    }
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+
+  const actual = await target.execute(
+    'SELECT name, seq FROM sqlite_sequence ORDER BY name'
+  );
+  const actualState = actual.rows.map(row => ({
+    name: row.name,
+    seq: Number(row.seq)
+  }));
+  if (JSON.stringify(actualState) !== JSON.stringify(state.sequences)) {
+    throw new Error('AUTOINCREMENT sequence verification failed after migration.');
+  }
+}
+
 async function verifyTransferredTable(source, target, table) {
   const quoted = quoteIdentifier(table);
   const sourceColumns = source.prepare(`PRAGMA table_info(${quoted})`).all();
@@ -177,6 +254,16 @@ async function main() {
     if (missingTables.length) {
       throw new Error(
         `Source SQLite database is missing expected tables: ${missingTables.join(', ')}. Review the source schema before transferring.`
+      );
+    }
+
+    const autoIncrementState = getAutoIncrementState(source);
+    const unexpectedAutoIncrementTables = autoIncrementState.tables.filter(
+      table => !TABLES_IN_INSERT_ORDER.includes(table)
+    );
+    if (unexpectedAutoIncrementTables.length > 0) {
+      throw new Error(
+        `Source SQLite contains unrecognized AUTOINCREMENT tables: ${unexpectedAutoIncrementTables.join(', ')}.`
       );
     }
 
@@ -328,8 +415,9 @@ async function main() {
       await verifyTransferredTable(source, target, table);
     }
 
+    await restoreAutoIncrementState(target, autoIncrementState);
     source.exec('COMMIT');
-    console.log('SQLite to Turso transfer completed. Verify key records before switching the bot.');
+    console.log('SQLite to Turso transfer completed, including AUTOINCREMENT sequence state. Verify key records before switching the bot.');
   } finally {
     if (source) source.close();
     if (databaseReady) await database.closeDatabase();
@@ -348,6 +436,8 @@ module.exports = {
   canonicalValue,
   rowsDigest,
   getPrimaryKeyColumns,
+  getAutoIncrementState,
+  restoreAutoIncrementState,
   verifyTransferredTable,
   TABLES_IN_INSERT_ORDER
 };
