@@ -922,7 +922,7 @@ async function handleTrialSubmission(interaction) {
             try {
                 await sendTrialDiscrepancyAlert(interaction.client, {
                     title: 'Trial Submission Cleanup Needs Attention',
-                    description: cleanupIssues.join('\\n'),
+                    description: cleanupIssues.join('\n'),
                     userId: interaction.user.id,
                     reason: 'Trial submission cleanup could not safely remove all incomplete records or messages.'
                 });
@@ -937,9 +937,9 @@ async function handleTrialSubmission(interaction) {
         const errorMessage =
             error.message || 'An unexpected error occurred.';
         const cleanupNote = pendingRecordRemoved
-            ? '\\n\\nThe incomplete pending submission was removed. Please submit again.'
+            ? '\n\nThe incomplete pending submission was removed. Please submit again.'
             : submissionId !== null
-                ? '\\n\\nThe submission record was not removed and its review message was retained because it may already have been reviewed. Please contact an Administrator or NCO before retrying.'
+                ? '\n\nThe submission record was not removed and its review message was retained because it may already have been reviewed. Please contact an Administrator or NCO before retrying.'
                 : '';
 
         if (interaction.deferred || interaction.replied) {
