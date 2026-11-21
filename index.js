@@ -1690,7 +1690,7 @@ function buildOrdealReviewContainer({
       : []),
     `**Gene Seed:** ${submission.gene_seed ?? 'Not specified'}`,
     `**Armoury Data:** ${submission.armoury_data ?? 'Not specified'}`,
-    '**AAR Points:** 0 (Ordeals do not affect the leaderboard)'
+    '**Saga Points:** 0 (Ordeals do not affect the leaderboard)'
   ].join('\n');
 
   const suspiciousWarning = Number(submission.suspicious_flag) === 1
@@ -1764,7 +1764,7 @@ async function buildAarApprovalResult(report, participants, reviewerId) {
 
   const approvalSummary = report.game_mode === 'PVP'
     ? (
-      `**Total points awarded to squad: ${formatAarPoints(totalAwarded)} AAR points.**\n` +
+      `**Total Saga Points awarded to squad: ${formatAarPoints(totalAwarded)}.**\n` +
       `Approved by: <@${reviewerId}>`
     )
     : (
@@ -2409,7 +2409,7 @@ async function processReportReaction(reaction, user) {
         name: 'AAR Approval',
         value: reportCategory === 'PVP'
           ? (
-            `**Total points awarded to squad: ${formatPoints(totalAwarded)} AAR points.**\n` +
+            `**Total Saga Points awarded to squad: ${formatPoints(totalAwarded)}.**\n` +
             `Approved by: <@${user.id}>`
           )
           : (
@@ -2991,12 +2991,12 @@ async function processOrdealReaction(reaction, user) {
         `**Challenge completion approved!**\n` +
         `Reward role: <@&${submission.reward_role_id}>\n` +
         `Role recipients: ${completerIds.map(id => `<@${id}>`).join(', ')}\n` +
-        `AAR points awarded: **0**\n` +
+        `Saga Points awarded: **0**\n` +
         `Approved by: <@${user.id}>`
       )
       : (
         `**Challenge submission rejected.**\n` +
-        `No reward role or AAR points were granted.\n` +
+        `No reward role or Saga Points were granted.\n` +
         `Rejected by: <@${user.id}>`
       );
 
@@ -4528,7 +4528,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             `${ordealDescriptions}\n\n` +
             '**Rewards (after approval):**\n' +
             '• The designated Discord role/title for approved challenge completers.\n\n' +
-            '**Ordeals award zero AAR points and do not affect the leaderboard.**\n' +
+            '**Ordeals award zero Saga Points and do not affect the leaderboard.**\n' +
             'Only actual challenge completers receive the special Discord role.',
           components: [selectRow],
           flags: MessageFlags.Ephemeral
@@ -5446,7 +5446,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         await interaction.editReply({
           content:
             `Your **${ordeal.name}** completion has been submitted successfully!\n\n` +
-            `**AAR Points:** 0\n` +
+            `**Saga Points:** 0\n` +
             `**Participants:** ${participants.length}\n` +
             `**Challenge completers:** ${completerIds.length}\n\n` +
             'Your challenge reward role will be processed after Admin, NCO, or High Command review.'
