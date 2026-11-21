@@ -37,6 +37,8 @@ async function backupDatabase() {
     const tx = await client.transaction('read');
     let committed = false;
     let tables;
+    let autoIncrementTableNames;
+    let sequences;
 
     try {
       const tablesResult = await tx.execute(`
@@ -56,6 +58,27 @@ async function backupDatabase() {
         tables[tableName] = jsonSafe(result.rows);
       }
 
+      const autoIncrementTables = await tx.execute(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND sql LIKE '%AUTOINCREMENT%'
+        ORDER BY name
+      `);
+      const autoIncrementSequences = await tx.execute(
+        'SELECT name, seq FROM sqlite_sequence ORDER BY name'
+      );
+      autoIncrementTableNames = autoIncrementTables.rows.map(row => row.name);
+      const allowedAutoIncrementTables = new Set(autoIncrementTableNames);
+      sequences = autoIncrementSequences.rows.map(row => {
+        const sequence = Number(row.seq);
+        if (!allowedAutoIncrementTables.has(row.name) ||
+            !Number.isSafeInteger(sequence) || sequence < 0) {
+          throw new Error('Database contains invalid AUTOINCREMENT sequence metadata.');
+        }
+        return { name: row.name, seq: sequence };
+      });
+
       await tx.commit();
       committed = true;
     } catch (error) {
@@ -64,27 +87,6 @@ async function backupDatabase() {
     } finally {
       tx.close();
     }
-
-    const autoIncrementTables = await client.execute(`
-      SELECT name
-      FROM sqlite_master
-      WHERE type = 'table'
-        AND sql LIKE '%AUTOINCREMENT%'
-      ORDER BY name
-    `);
-    const autoIncrementSequences = await client.execute(
-      'SELECT name, seq FROM sqlite_sequence ORDER BY name'
-    );
-    const autoIncrementTableNames = autoIncrementTables.rows.map(row => row.name);
-    const allowedAutoIncrementTables = new Set(autoIncrementTableNames);
-    const sequences = autoIncrementSequences.rows.map(row => {
-      const sequence = Number(row.seq);
-      if (!allowedAutoIncrementTables.has(row.name) ||
-          !Number.isSafeInteger(sequence) || sequence < 0) {
-        throw new Error('Database contains invalid AUTOINCREMENT sequence metadata.');
-      }
-      return { name: row.name, seq: sequence };
-    });
 
     const backup = {
       format: 'servitor-turso-logical-backup',
