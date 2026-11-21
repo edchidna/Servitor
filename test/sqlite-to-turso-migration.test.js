@@ -13,7 +13,10 @@ const {
   TABLES_IN_INSERT_ORDER
 } = require('../migrate-sqlite-to-turso');
 const { jsonSafe } = require('../backup-database');
-const { decodeBackupValue } = require('../restore-database');
+const {
+  decodeBackupValue,
+  validateAutoIncrementSequences
+} = require('../restore-database');
 
 function createLegacySchema(source) {
   const root = path.join(__dirname, '..');
@@ -523,6 +526,30 @@ test('SQLite migration refuses unrecognized source tables before importing data'
   }
 });
 
+
+test('restore rejects malformed AUTOINCREMENT sequence metadata', () => {
+  assert.doesNotThrow(() => validateAutoIncrementSequences({
+    tables: ['reports'],
+    sequences: [{ name: 'reports', seq: 12 }]
+  }));
+
+  for (const invalid of [
+    { tables: ['reports'], sequences: [{ name: 'reports', seq: null }] },
+    { tables: ['reports'], sequences: [{ name: 'reports', seq: '12' }] },
+    { tables: ['reports'], sequences: [{ name: 'reports', seq: -1 }] },
+    { tables: ['reports'], sequences: [
+      { name: 'reports', seq: 12 },
+      { name: 'reports', seq: 13 }
+    ] },
+    { tables: ['unknown_table'], sequences: [] },
+    { tables: ['reports', 'reports'], sequences: [] }
+  ]) {
+    assert.throws(
+      () => validateAutoIncrementSequences(invalid),
+      /AUTOINCREMENT/
+    );
+  }
+});
 
 test('logical backup preserves Buffer and Uint8Array BLOB bytes', () => {
   const backing = Uint8Array.from([99, 10, 20, 30, 88]);
