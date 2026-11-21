@@ -3039,7 +3039,7 @@ async function processOrdealReaction(reaction, user) {
         await sendOrdealReviewAlert(
           client,
           `Ordeal #${submissionId} Review Card Update Failed`,
-          `The database decision is already **${decision.toUpperCase()}**, but the original review card could not be updated.\\n\\nReview message: ${message.url}\\nPlease inspect the submission record and repair the Discord card if needed.`
+          `The database decision is already **${decision.toUpperCase()}**, but the original review card could not be updated.\n\nReview message: ${message.url}\nPlease inspect the submission record and repair the Discord card if needed.`
         );
       } catch (alertError) {
         console.error(
