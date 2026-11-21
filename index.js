@@ -5601,6 +5601,10 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         armouryData
       };
 
+      await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+      });
+
       const reportId = await aarDatabase.createAarReport({
         submitterId: interaction.user.id,
         gameMode: 'Operations',
@@ -5609,11 +5613,6 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         bonusPoints,
         totalPoints,
         participants: [...participants]
-      });
-
-      // Acknowledge Discord before processing uploads.
-      await interaction.deferReply({
-        flags: MessageFlags.Ephemeral
       });
 
       // ====================================
@@ -5778,6 +5777,10 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         armouryData
       };
 
+      await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+      });
+
       const reportId = await aarDatabase.createAarReport({
         submitterId: interaction.user.id,
         gameMode: 'Stratagems',
@@ -5786,11 +5789,6 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         bonusPoints,
         totalPoints,
         participants: [...participants]
-      });
-
-      // Acknowledge Discord before processing uploads.
-      await interaction.deferReply({
-        flags: MessageFlags.Ephemeral
       });
 
       // ====================================
@@ -5926,6 +5924,10 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         result
       };
 
+      await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+      });
+
       const reportId = await aarDatabase.createAarReport({
         submitterId: interaction.user.id,
         gameMode: 'PVP',
@@ -5934,10 +5936,6 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         bonusPoints,
         totalPoints,
         participants: [...participants]
-      });
-
-      await interaction.deferReply({
-        flags: MessageFlags.Ephemeral
       });
 
       try {
@@ -6105,6 +6103,10 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         waves
       };
 
+      await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+      });
+
       const reportId = await aarDatabase.createAarReport({
         submitterId: interaction.user.id,
         gameMode: 'Siege',
@@ -6113,11 +6115,6 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         bonusPoints,
         totalPoints,
         participants: [...participants]
-      });
-
-      // Acknowledge Discord before processing uploads.
-      await interaction.deferReply({
-        flags: MessageFlags.Ephemeral
       });
 
       // ====================================
@@ -6158,15 +6155,17 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
     console.error('Interaction error:', error);
 
-    if (
-      interaction.isRepliable() &&
-      !interaction.replied &&
-      !interaction.deferred
-    ) {
-      await interaction.reply({
-        content: 'An error occurred while processing your request.',
-        flags: MessageFlags.Ephemeral
-      }).catch(console.error);
+    if (interaction.isRepliable()) {
+      if (interaction.deferred) {
+        await interaction.editReply({
+          content: 'An error occurred while processing your request.'
+        }).catch(console.error);
+      } else if (!interaction.replied) {
+        await interaction.reply({
+          content: 'An error occurred while processing your request.',
+          flags: MessageFlags.Ephemeral
+        }).catch(console.error);
+      }
     }
   }
 });
