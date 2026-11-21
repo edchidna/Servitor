@@ -3104,7 +3104,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
           return;
         }
-        await interaction.deferReply();
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const subcommand = interaction.options.getSubcommand();
         const targetUser = interaction.options.getUser('member', true);
