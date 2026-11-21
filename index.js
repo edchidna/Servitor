@@ -2596,6 +2596,30 @@ async function processReportReaction(reaction, user) {
 // ORDEAL APPROVAL PROCESSING
 // ==========================================
 
+async function sendOrdealReviewAlert(client, title, description) {
+  const alertChannel = await client.channels.fetch(
+    process.env.NCO_REVIEW_CHANNEL_ID
+  );
+
+  if (
+    !alertChannel ||
+    !alertChannel.isTextBased() ||
+    !alertChannel.isSendable()
+  ) {
+    throw new Error('NCO review channel is unavailable for Ordeal discrepancy alerts.');
+  }
+
+  await alertChannel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle(title)
+        .setDescription(description)
+        .setTimestamp()
+    ],
+    allowedMentions: { parse: [] }
+  });
+}
 
 async function processOrdealReaction(reaction, user) {
 
@@ -3010,6 +3034,19 @@ async function processOrdealReaction(reaction, user) {
         `Could not update review card for Ordeal #${submissionId}. The database decision is already saved:`,
         editError
       );
+
+      try {
+        await sendOrdealReviewAlert(
+          client,
+          `Ordeal #${submissionId} Review Card Update Failed`,
+          `The database decision is already **${decision.toUpperCase()}**, but the original review card could not be updated.\\n\\nReview message: ${message.url}\\nPlease inspect the submission record and repair the Discord card if needed.`
+        );
+      } catch (alertError) {
+        console.error(
+          `Could not send the Ordeal review-card discrepancy alert for #${submissionId}:`,
+          alertError
+        );
+      }
 
     }
     await message.reactions.removeAll().catch(console.error);
