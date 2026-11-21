@@ -65,14 +65,39 @@ async function backupDatabase() {
       tx.close();
     }
 
+    const autoIncrementTables = await client.execute(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND sql LIKE '%AUTOINCREMENT%'
+      ORDER BY name
+    `);
+    const autoIncrementSequences = await client.execute(
+      'SELECT name, seq FROM sqlite_sequence ORDER BY name'
+    );
+    const autoIncrementTableNames = autoIncrementTables.rows.map(row => row.name);
+    const allowedAutoIncrementTables = new Set(autoIncrementTableNames);
+    const sequences = autoIncrementSequences.rows.map(row => {
+      const sequence = Number(row.seq);
+      if (!allowedAutoIncrementTables.has(row.name) ||
+          !Number.isSafeInteger(sequence) || sequence < 0) {
+        throw new Error('Database contains invalid AUTOINCREMENT sequence metadata.');
+      }
+      return { name: row.name, seq: sequence };
+    });
+
     const backup = {
       format: 'servitor-turso-logical-backup',
-      formatVersion: 1,
+      formatVersion: 2,
       createdAt: new Date().toISOString(),
       databaseType: process.env.TURSO_DATABASE_URL.startsWith('file:')
         ? 'local-file'
         : 'remote-turso',
-      tables
+      tables,
+      autoIncrementSequences: {
+        tables: autoIncrementTableNames,
+        sequences
+      }
     };
 
     const backupDirectory = process.env.BACKUP_OUTPUT_DIR
