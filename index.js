@@ -6265,6 +6265,24 @@ async function checkVeteranPromotion() {
 // ==========================================
 
 async function startServitor() {
+  // Fail fast when a required runtime destination is missing. Otherwise the
+  // bot could appear online while submissions or leaderboard updates cannot work.
+  const requiredRuntimeVariables = [
+    'DISCORD_TOKEN',
+    'REPORT_CHANNEL_ID',
+    'REVIEW_CHANNEL_ID',
+    'ORDEAL_REVIEW_CHANNEL_ID',
+    'LEADERBOARD_CHANNEL_ID'
+  ];
+  const missingRuntimeVariables = requiredRuntimeVariables.filter(
+    variable => !process.env[variable] || !process.env[variable].trim()
+  );
+  if (missingRuntimeVariables.length > 0) {
+    throw new Error(
+      `Missing required runtime configuration: ${missingRuntimeVariables.join(', ')}`
+    );
+  }
+
   // Database readiness is a hard startup prerequisite. Do not accept Discord
   // interactions until every feature schema is available.
   await database.initializeDatabase();
@@ -6272,10 +6290,6 @@ async function startServitor() {
   await initializeTrialSchema();
   await initializeHonorSchema();
   databaseReady = true;
-
-  if (!process.env.DISCORD_TOKEN) {
-    throw new Error('DISCORD_TOKEN is missing from the environment.');
-  }
 
   await client.login(process.env.DISCORD_TOKEN);
 }
