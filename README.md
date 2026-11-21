@@ -28,7 +28,7 @@ A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge
 | `migrate-sqlite-to-turso.js` | One-time import from a separately copied SQLite database into an empty Turso target |
 | `backup-database.js` / `restore-database.js` | Logical JSON backup and clean-target restore |
 
-See [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md) for the migration procedure, validation status, and recovery cautions.
+See [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md) for the migration procedure, validation status, and recovery cautions. See [LIVE_SERVER_CUTOVER_PLAN.md](./LIVE_SERVER_CUTOVER_PLAN.md) for the controlled existing-server cutover sequence and rollback plan.
 
 ## Contents
 
