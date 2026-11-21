@@ -592,3 +592,9 @@ The same launch gates remain: real SQLite-copy migration rehearsal, remote backu
 - GitHub Actions run #218 on commit `358667c50bcf1c500accebfa26be2f3e8ca4a6bb` completed successfully after the AAR panel and Ordeal selection corrections. Dependency installation, syntax checks, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed. The subsequent migration-notes-only update does not alter runtime code.
 
 No Discord test server, production database, production backup, hosting service, or live bot was accessed. No merge, deployment, or production cutover occurred.
+
+### Runtime configuration fail-fast follow-up
+
+- Expanded startup validation to require every core channel and role ID used by AAR, Ordeal, Trial, NCO discrepancy alerts, leaderboard, Trial graduation, and Saga tenure tracking. Previously, a subset of these values could be missing while the process still logged in, leaving one or more workflows unusable without a clear startup failure.
+- Optional Ordeal reward-role IDs remain optional; a challenge is offered only when its own reward role is configured.
+- The change is on `migration/turso` and awaits the fresh CI result. It validates that values are present/nonblank, not that the configured Discord IDs resolve to the intended live resources; that remains part of isolated Discord acceptance testing.
