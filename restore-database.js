@@ -19,7 +19,7 @@ const {
 } = require('./migrate-sqlite-to-turso');
 
 const BACKUP_FORMAT = 'servitor-turso-logical-backup';
-const BACKUP_FORMAT_VERSION = 1;
+const BACKUP_FORMAT_VERSION = 2;
 const EXPECTED_MIGRATION_NAME = 'core-aar-ordeals-saga-schema';
 
 function quoteIdentifier(identifier) {
@@ -67,6 +67,90 @@ function decodeBackupValue(value, column) {
   return value;
 }
 
+function validateAutoIncrementSequences(state) {
+  if (!state || !Array.isArray(state.tables) || !Array.isArray(state.sequences)) {
+    throw new Error('Backup does not contain valid AUTOINCREMENT sequence metadata.');
+  }
+
+  const tableNames = state.tables;
+  if (tableNames.some(name =>
+    typeof name !== 'string' ||
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ||
+    !TABLES_IN_INSERT_ORDER.includes(name)
+  )) {
+    throw new Error('Backup contains an invalid AUTOINCREMENT table name.');
+  }
+  if (new Set(tableNames).size !== tableNames.length ||
+      JSON.stringify([...tableNames].sort()) !== JSON.stringify([...tableNames].sort())) {
+    throw new Error('Backup contains duplicate AUTOINCREMENT table names.');
+  }
+
+  const allowed = new Set(tableNames);
+  const seen = new Set();
+  for (const row of state.sequences) {
+    if (!row || typeof row.name !== 'string' ||
+        !allowed.has(row.name) || seen.has(row.name) ||
+        !Number.isSafeInteger(Number(row.seq)) || Number(row.seq) < 0) {
+      throw new Error('Backup contains invalid AUTOINCREMENT sequence values.');
+    }
+    seen.add(row.name);
+  }
+}
+
+async function restoreAutoIncrementSequences(target, state) {
+  validateAutoIncrementSequences(state);
+
+  const targetTables = await target.execute(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND sql LIKE '%AUTOINCREMENT%'
+    ORDER BY name
+  `);
+  const targetNames = targetTables.rows.map(row => row.name);
+  if (JSON.stringify(targetNames) !== JSON.stringify([...state.tables].sort())) {
+    throw new Error(
+      `AUTOINCREMENT table inventory mismatch: backup=[${[...state.tables].sort().join(', ')}], target=[${targetNames.join(', ')}].`
+    );
+  }
+
+  const tx = await target.transaction('write');
+  try {
+    for (const name of targetNames) {
+      await tx.execute({
+        sql: 'DELETE FROM sqlite_sequence WHERE name = ?',
+        args: [name]
+      });
+    }
+    for (const row of state.sequences) {
+      await tx.execute({
+        sql: 'INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)',
+        args: [row.name, Number(row.seq)]
+      });
+    }
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+
+  const actual = await target.execute(
+    'SELECT name, seq FROM sqlite_sequence ORDER BY name'
+  );
+  const actualRows = actual.rows.map(row => ({
+    name: row.name,
+    seq: Number(row.seq)
+  }));
+  const expectedRows = [...state.sequences]
+    .map(row => ({ name: row.name, seq: Number(row.seq) }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
+    throw new Error('AUTOINCREMENT sequence verification failed after restore.');
+  }
+}
+
 function validateBackup(backup) {
   if (!backup || backup.format !== BACKUP_FORMAT) {
     throw new Error('Unrecognized Servitor logical backup format.');
@@ -74,6 +158,7 @@ function validateBackup(backup) {
   if (backup.formatVersion !== BACKUP_FORMAT_VERSION) {
     throw new Error(`Unsupported backup format version: ${backup.formatVersion}`);
   }
+  validateAutoIncrementSequences(backup.autoIncrementSequences);
   if (!backup.tables || typeof backup.tables !== 'object' || Array.isArray(backup.tables)) {
     throw new Error('Backup does not contain a valid tables object.');
   }
@@ -277,7 +362,8 @@ async function restoreDatabase(backupFilePath) {
       console.log(`Restored and verified ${decodedRows.length} rows from ${table}.`);
     }
 
-    console.log('Servitor logical backup restore completed and verified.');
+    await restoreAutoIncrementSequences(target, backup.autoIncrementSequences);
+    console.log('Servitor logical backup restore completed and verified, including AUTOINCREMENT sequence state.');
   } finally {
     await database.closeDatabase();
   }
@@ -294,5 +380,7 @@ module.exports = {
   restoreDatabase,
   validateBackup,
   decodeBackupValue,
+  validateAutoIncrementSequences,
+  restoreAutoIncrementSequences,
   verifyRestoredTable
 };
