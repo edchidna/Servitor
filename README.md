@@ -78,20 +78,20 @@ The repository does not currently declare a specific Node.js version in `package
 | File or folder | Purpose |
 |---|---|
 | `index.js` | Main bot entry point; AAR, Ordeal, Saga History, role tracking, and interaction handlers |
-| `database.js` | Creates and initializes the SQLite database and AAR/Ordeal tables |
+| `turso-database.js` | Shared asynchronous Turso/libSQL client, transactions, and graceful shutdown |
 | `leaderboard.js` | Calculates and publishes the combined Saga Points leaderboard |
 | `trial.js` | Unproven Trial panels, submissions, reviews, progression, and graduation |
-| `trial-database.js` | Trial persistence and scoring operations |
+| `trial-database-turso.js` | Trial persistence and scoring operations |
 | `honor.js` | Honor award, revocation, history, naming, and layout logic |
-| `honor-database.js` | Honor tables and initial Honor records |
+| `feature-database-schemas.js` | Trial/Honor schema initialization and seeded Honor records |
 | `deploy-commands.js` | Registers the bot's guild slash commands |
-| `test-operations-modal.js` | Focused checks for the Operations modal and related submission logic |
+| `test-operations-modal.js` | Focused Operations modal regression test |
 | `assets/saga-background.png` | Background image used by the Saga History profile card |
 | `assets/fonts/` | Font assets used by the profile card |
 | `package.json` | Project metadata, scripts, and dependencies |
 | `package-lock.json` | Locked dependency versions |
 
-The database is created locally as `aar-database.db`. SQLite may also create `aar-database.db-wal` and `aar-database.db-shm` while using write-ahead logging.
+On this branch, application data is stored in the Turso/libSQL database selected by `TURSO_DATABASE_URL`. A local `file:` URL can be used for isolated development/testing, but do not point the live bot at a test database. The old `aar-database.db` SQLite file is a migration source, not the active runtime database.
 
 ## Installation
 
@@ -148,6 +148,9 @@ An Ordeal challenge without its configured reward role is not available for sele
 Replace every placeholder with the actual value from your Discord application/server. These are placeholders, not working credentials.
 
 ```dotenv
+TURSO_DATABASE_URL=libsql://YOUR_DATABASE-HOST.turso.io
+TURSO_AUTH_TOKEN=YOUR_READ_WRITE_DATABASE_TOKEN
+
 DISCORD_TOKEN=YOUR_BOT_TOKEN
 CLIENT_ID=YOUR_DISCORD_APPLICATION_ID
 GUILD_ID=YOUR_DISCORD_SERVER_ID
@@ -254,7 +257,7 @@ When the bot becomes ready, it:
 
 Keep the process running for the bot to remain online. For production use, run it on a reliable always-on host and arrange a safe restart strategy.
 
-The first startup initializes the local SQLite database and may create or update database records. Back up any existing database before replacing or changing production data.
+On this branch, startup initializes the configured Turso/libSQL schemas and verifies required Discord destinations. Do not run the bot against production while migration and acceptance testing are still outstanding.
 
 ## AAR system
 
@@ -343,7 +346,7 @@ For regular AAR submissions, the bot:
 4. Posts a review embed in `REVIEW_CHANNEL_ID`.
 5. Creates a thread under the review message for the original evidence files.
 6. Adds ✅ and ❌ reactions to the review message.
-7. Stores report data and evidence references in SQLite.
+7. Stores report data and evidence references in Turso/libSQL.
 
 The collage is a review convenience; original uploads are retained in the evidence thread. Image collage generation supports common image formats handled by the implementation, including PNG, JPEG, GIF, and WebP. Non-image evidence can remain in the original evidence thread even when it cannot be included in the collage.
 
@@ -652,54 +655,35 @@ The bot stores the leaderboard message ID in `bot_settings` and edits the saved 
 
 ## Database and persistence
 
-The project uses SQLite through `better-sqlite3`.
+Application persistence on `migration/turso` uses the asynchronous `@libsql/client` driver and the database configured by `TURSO_DATABASE_URL`.
 
-The main database file is:
-
-```text
-aar-database.db
-```
-
-SQLite write-ahead logging is enabled (`journal_mode=WAL`), and foreign-key enforcement is enabled.
-
-The database stores AAR reports, participants, score ledgers, audit records, Ordeal submissions, Trial records, Honor records, settings, and Iron Wolves tenure data.
+The database stores AAR reports, participants, score ledgers, audit records, Ordeal submissions, Trial records, Honor records, settings, Saga adjustments, and Iron Wolves tenure data. Schema initialization is handled by `core-database-schema.js` and `feature-database-schemas.js`.
 
 Important persistence notes:
 
-- Database files are local runtime data and are ignored by Git.
-- Do not delete `aar-database.db` to troubleshoot the bot unless you intentionally want to remove the stored data.
-- The `-wal` and `-shm` files are SQLite runtime sidecars; do not manually edit them.
-- Back up the database before making database/schema changes or moving the bot to another host.
-- Stop the bot cleanly before manually copying the database files.
+- `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` must refer to the intended database and remain secret environment values.
+- Use a dedicated disposable Turso database for remote tests; never reuse it for the live bot, migration rehearsal, or restore rehearsal.
+- The old `aar-database.db` file is the SQLite migration source. Never overwrite, delete, or use the production source as a rehearsal target.
+- `migrate-sqlite-to-turso.js` imports from a separately copied SQLite source into an empty Turso target and verifies row counts/content digests.
+- `backup-database.js` creates a logical JSON backup. `restore-database.js` restores only into a clean, correctly initialized target; it refuses to merge into populated application tables.
+- Restore commits each table separately, not the entire database atomically. If a later table fails, discard/reset the disposable target before retrying; do not point Servitor at a partially restored target.
+- Keep the original production SQLite database and its independent backup untouched until a separately approved cutover plan is executed.
 
-Database initialization and migrations run through the database modules when the bot starts.
-
-The production Servitor setup is intended to begin with a fresh database. Do not copy development or test database files into production unless a deliberate migration has been planned and approved.
-
+See `TURSO_MIGRATION_NOTES.md` for the detailed rehearsal procedure, verification requirements, and outstanding launch gates.
 ## Testing
 
-The repository contains a focused Operations modal test script. Run it from the project root:
+Available automated checks are exposed as npm scripts:
 
 ```powershell
-node test-operations-modal.js
+npm.cmd run check:syntax
+npm.cmd run test:libsql
+npm.cmd run test:operations-modal
+npm.cmd run test:turso-remote-fk
 ```
 
-The script checks the Operations modal structure, field constraints, difficulty values, difficulty-selection workflow, and participant-selection helper behavior.
+The remote Turso persistence suite is included in `test:libsql` when the dedicated remote test credentials are configured in CI. `test:turso-remote-fk` requires a separate empty disposable remote test database and must never be pointed at production.
 
-There is currently no `test` script in `package.json`, so `npm.cmd test` is not configured. The Operations test is not a full Discord integration test and does not verify live server permissions, channel configuration, role hierarchy, or end-to-end review behavior.
-
-JavaScript syntax can be checked separately:
-
-```powershell
-node --check .\index.js
-node --check .\trial.js
-node --check .\trial-database.js
-node --check .\database.js
-node --check .\leaderboard.js
-```
-
-A syntax check does not start the bot or verify live Discord behavior.
-
+These checks do not start a live Discord bot or verify server permissions, role hierarchy, channel configuration, real evidence uploads, or complete end-to-end review behaviour. Review `TURSO_MIGRATION_NOTES.md` for the latest verified CI run and remaining acceptance gates.
 ## Troubleshooting
 
 ### Bot does not start
