@@ -80,7 +80,7 @@ function createTrialPanelPayload() {
                 '• Select 1–2 Trial Completers.',
                 '• Select the Trial completed.',
                 '• Select 1–2 Pack Members.',
-                '• Upload 1–6 evidence files.',
+                '• Upload 1–6 evidence files (10 MB maximum each).',
                 '',
                 '**Important:**',
                 'At least one NCO must be selected as a Pack Member.',
@@ -162,7 +162,7 @@ function createTrialSubmissionModal() {
 
             new LabelBuilder()
                 .setLabel('Evidence Files')
-                .setDescription('Upload 1–6 proof images or files.')
+                .setDescription('Upload 1–6 proof images or files (10 MB maximum per file).')
                 .setFileUploadComponent(evidenceUpload)
 
         );
