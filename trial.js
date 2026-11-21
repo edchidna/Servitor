@@ -877,36 +877,78 @@ async function handleTrialSubmission(interaction) {
     } catch (error) {
         console.error('Trial submission failed:', error);
 
-
-        if (reviewMessage) {
-            await reviewMessage.delete().catch(console.error);
-        }
-
-        // ----------------------------------
-        // CLEAN UP DATABASE RECORD
-        // ----------------------------------
+        // Delete the Discord review card only after the database confirms that
+        // the submission was still pending and has actually been removed.
+        // A moderator may have reviewed it while the submitter's final response
+        // or discrepancy alert was being sent.
+        let pendingRecordRemoved = false;
+        const cleanupIssues = [];
 
         if (submissionId !== null) {
             try {
-                await trialDatabase.deletePendingTrialSubmission(submissionId);
+                pendingRecordRemoved = await trialDatabase.deletePendingTrialSubmission(
+                    submissionId
+                );
             } catch (cleanupError) {
                 console.error(
                     'Trial database cleanup failed:',
                     cleanupError
+                );
+                cleanupIssues.push(
+                    `Could not remove pending Trial submission #${submissionId}: ${cleanupError.message}`
+                );
+            }
+        }
+
+        if (reviewMessage && pendingRecordRemoved) {
+            try {
+                await reviewMessage.delete();
+            } catch (messageDeleteError) {
+                console.error(
+                    `Could not delete incomplete Trial review message for #${submissionId}:`,
+                    messageDeleteError
+                );
+                cleanupIssues.push(
+                    `Could not delete incomplete Discord review message ${reviewMessage.url}.`
+                );
+            }
+        } else if (reviewMessage && !pendingRecordRemoved) {
+            cleanupIssues.push(
+                `Trial submission #${submissionId} was not removed as pending; its review message was retained to avoid deleting a possibly finalized review. Message: ${reviewMessage.url}`
+            );
+        }
+
+        if (cleanupIssues.length > 0) {
+            try {
+                await sendTrialDiscrepancyAlert(interaction.client, {
+                    title: 'Trial Submission Cleanup Needs Attention',
+                    description: cleanupIssues.join('\\n'),
+                    userId: interaction.user.id,
+                    reason: 'Trial submission cleanup could not safely remove all incomplete records or messages.'
+                });
+            } catch (alertError) {
+                console.error(
+                    `Could not send Trial submission cleanup alert for #${submissionId}:`,
+                    alertError
                 );
             }
         }
 
         const errorMessage =
             error.message || 'An unexpected error occurred.';
+        const cleanupNote = pendingRecordRemoved
+            ? '\\n\\nThe incomplete pending submission was removed. Please submit again.'
+            : submissionId !== null
+                ? '\\n\\nThe submission record was not removed and its review message was retained because it may already have been reviewed. Please contact an Administrator or NCO before retrying.'
+                : '';
 
         if (interaction.deferred || interaction.replied) {
             await interaction.editReply({
-                content: `Your Trial submission could not be completed: ${errorMessage}`
+                content: `Your Trial submission could not be completed: ${errorMessage}${cleanupNote}`
             }).catch(console.error);
         } else {
             await interaction.reply({
-                content: `Your Trial submission could not be completed: ${errorMessage}`,
+                content: `Your Trial submission could not be completed: ${errorMessage}${cleanupNote}`,
                 flags: 64
             }).catch(console.error);
         }
