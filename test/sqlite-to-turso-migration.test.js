@@ -191,6 +191,15 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
 
     seedLegacyRows(source);
 
+    // Preserve historical AUTOINCREMENT counters even when the highest-ID
+    // records were deleted before the migration snapshot.
+    source.prepare(
+      'UPDATE sqlite_sequence SET seq = ? WHERE name = ?'
+    ).run(9001, 'reports');
+    source.prepare(
+      'UPDATE sqlite_sequence SET seq = ? WHERE name = ?'
+    ).run(9401, 'ordeal_submissions');
+
     const migration = spawnSync(
       process.execPath,
       [path.join(__dirname, '..', 'migrate-sqlite-to-turso.js')],
@@ -214,6 +223,18 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
     for (const table of TABLES_IN_INSERT_ORDER) {
       await verifyTransferredTable(source, targetClient, table);
     }
+
+    const migratedSequences = await targetClient.execute(
+      'SELECT name, seq FROM sqlite_sequence WHERE name IN (?, ?) ORDER BY name',
+      ['ordeal_submissions', 'reports']
+    );
+    assert.deepEqual(
+      migratedSequences.rows.map(row => ({ name: row.name, seq: Number(row.seq) })),
+      [
+        { name: 'ordeal_submissions', seq: 9401 },
+        { name: 'reports', seq: 9001 }
+      ]
+    );
 
     const migratedReport = await targetClient.execute(
       'SELECT submitter_id, status, total_points FROM reports WHERE id = ?',
@@ -261,6 +282,16 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
     const backupFilePath = path.join(backupDirectory, backupFilename);
     const backupJson = JSON.parse(fs.readFileSync(backupFilePath, 'utf8'));
     assert.equal(backupJson.format, 'servitor-turso-logical-backup');
+    assert.equal(backupJson.formatVersion, 2);
+    assert.deepEqual(
+      backupJson.autoIncrementSequences.sequences.filter(row =>
+        ['reports', 'ordeal_submissions'].includes(row.name)
+      ),
+      [
+        { name: 'ordeal_submissions', seq: 9401 },
+        { name: 'reports', seq: 9001 }
+      ]
+    );
 
     const restoredPath = path.join(directory, 'restored-target.db');
     const restoreRun = spawnSync(
@@ -284,6 +315,18 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
 
     const restoredClient = createClient({ url: `file:${restoredPath}` });
     try {
+      const restoredSequences = await restoredClient.execute(
+        'SELECT name, seq FROM sqlite_sequence WHERE name IN (?, ?) ORDER BY name',
+        ['ordeal_submissions', 'reports']
+      );
+      assert.deepEqual(
+        restoredSequences.rows.map(row => ({ name: row.name, seq: Number(row.seq) })),
+        [
+          { name: 'ordeal_submissions', seq: 9401 },
+          { name: 'reports', seq: 9001 }
+        ]
+      );
+
       for (const table of TABLES_IN_INSERT_ORDER) {
         await verifyTransferredTable(source, restoredClient, table);
       }
