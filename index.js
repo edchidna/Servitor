@@ -4063,7 +4063,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      pendingOrdealWorkflows.set(interaction.user.id, {
+      const ordealWorkflow = {
         challenge: selectedOrdeal,
         submitterId: interaction.user.id,
         completerIds: [],
@@ -4071,7 +4071,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         operation: null,
         geneSeed: null,
         armouryData: null
-      });
+      };
+
+      // Expire abandoned multi-step workflows so a closed ephemeral form
+      // cannot permanently block this member from starting another Ordeal.
+      ordealWorkflow.expirationTimer = setTimeout(() => {
+        if (pendingOrdealWorkflows.get(interaction.user.id) === ordealWorkflow) {
+          pendingOrdealWorkflows.delete(interaction.user.id);
+        }
+      }, 15 * 60 * 1000);
+      ordealWorkflow.expirationTimer.unref();
+
+      pendingOrdealWorkflows.set(interaction.user.id, ordealWorkflow);
 
       await interaction.reply({
         content:
