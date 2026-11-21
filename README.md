@@ -98,8 +98,8 @@ On this branch, application data is stored in the Turso/libSQL database selected
 Open PowerShell in the Servitor project directory.
 
 ```powershell
-cd C:\Users\edchi\Servitor
-npm.cmd install
+cd "C:\Users\edchi\SM2 bot\Servitor"
+npm.cmd ci
 ```
 
 `npm.cmd` is used here to avoid the common Windows PowerShell script-execution restriction affecting `npm.ps1`.
@@ -230,6 +230,8 @@ Current commands:
 | `/aar-help` | Displays AAR and Honor system information |
 | `/aar-panel` | Publishes the AAR submission panel |
 | `/sagahistory [member]` | Displays a member's Saga History profile card |
+| `/sagapoint add` | Adds Saga Points to a member with a required reason |
+| `/sagapoint deduct` | Deducts Saga Points from a member with a required reason |
 | `/honor give` | Awards an Honor to a member |
 | `/honor remove` | Revokes an active Honor |
 | `/honor list [member]` | Shows a member's active Honors |
@@ -377,7 +379,7 @@ On approval:
 - The reviewer decision is recorded in the audit log.
 - The leaderboard is refreshed.
 
-On rejection, no AAR points are awarded. The decision is recorded.
+On rejection, no Saga Points are awarded. The decision is recorded.
 
 The AAR panel's descriptive text should identify Administrators, Admins, NCOs, and AAR Moderators/High Command as the permitted reviewers.
 
@@ -444,7 +446,7 @@ A +1 squad bonus applies when the report has more than one participant.
 
 Ordeals are a separate challenge-completion workflow with their own review channel and reward roles. They are not regular AAR submissions.
 
-**Ordeals award zero AAR points. They do not contribute to the Saga Points leaderboard.**
+**Ordeals award zero Saga Points. They do not contribute to the Saga Points leaderboard.**
 
 ### Configured challenges
 
@@ -519,7 +521,7 @@ Trial reviews use Approve and Reject buttons. Reviewers must have at least one o
 
 The review must occur in `TRIAL_REVIEW_CHANNEL_ID` and must reference the original pending review message.
 
-Unlike regular AAR and Ordeal reviews, Trial reviews intentionally do not block a reviewer from reviewing their own submission.
+Self-review is prohibited: the Trial submitter, Trial Completers, and Pack Members cannot approve or reject that same submission.
 
 ### Progression and graduation
 
@@ -745,7 +747,8 @@ The following are operational limitations or implementation details worth unders
 2. **Trial preview and approval:** Eligible Pack Members receive +2 Saga Points at approval, not +3. Members who still have the Unproven role at review receive zero.
 3. **AAR panel description:** The AAR review permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators/High Command. The panel description should reflect all four accepted permission paths.
 4. **No npm test script:** `test-operations-modal.js` is a standalone focused test, not a complete automated test suite.
-5. **Discord-side verification:** Local syntax checks and the Operations regression test do not replace live testing of channel permissions, role hierarchy, evidence uploads, reactions, and review workflows.
+5. **Trial self-review:** The submitter, Trial Completers, and Pack Members are prohibited from reviewing their own Trial submission.
+6. **Discord-side verification:** Automated checks do not replace live testing of channel permissions, role hierarchy, evidence uploads, reactions, and review workflows.
 
 ## License
 
