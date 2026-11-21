@@ -66,12 +66,12 @@ See [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md) for the migration pro
 
 ## Requirements
 
-- Node.js and npm, using a Node.js release compatible with the dependencies in `package.json`.
+- Node.js 22.x and npm. The migration utility uses Node's built-in `node:sqlite` API; use a current Node.js 22 release for the full migration and validation toolchain.
 - A Discord application and bot created in the Discord Developer Portal.
 - A Discord server where the bot can be invited.
 - Access to configure the bot's environment variables and Discord role/channel IDs.
 
-The repository does not currently declare a specific Node.js version in `package.json`. Check dependency compatibility if you encounter a runtime or installation error.
+The GitHub Actions validation workflow uses Node.js 22.
 
 ## Project files
 
