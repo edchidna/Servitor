@@ -127,6 +127,23 @@ async function createAarReport({ submitterId, gameMode, reportData, basePoints, 
   });
 }
 
+async function deleteUnlinkedPendingReport(reportId) {
+  return database.withTransaction(async tx => {
+    const deleted = await tx.execute({
+      sql: `DELETE FROM reports
+            WHERE id = ? AND status = 'pending'
+              AND review_message_id IS NULL`,
+      args: [reportId]
+    });
+    if (Number(deleted.rowsAffected) !== 1) return false;
+    await tx.execute({
+      sql: 'DELETE FROM report_participants WHERE report_id = ?',
+      args: [reportId]
+    });
+    return true;
+  });
+}
+
 async function getMemberApprovedAarTotal(userId) {
   const result = await database.execute({
     sql: `SELECT COALESCE(SUM(sl.points), 0) AS total
@@ -142,5 +159,5 @@ module.exports = {
   getReportById, getReportByReviewMessage, getReportByIdAndMode,
   getReportParticipants, getReportAudit, getPendingReviewUpdates,
   clearRecoveryMarker, attachReviewMessage, saveAarDecision,
-  createAarReport, getMemberApprovedAarTotal
+  createAarReport, deleteUnlinkedPendingReport, getMemberApprovedAarTotal
 };
