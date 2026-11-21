@@ -3098,7 +3098,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.commandName === 'sagapoint') {
 
         if (!interaction.guild) {
-          await interaction.reply({
+          await interaction.editReply({
             content: 'Saga Point commands can only be used inside a server.',
             flags: MessageFlags.Ephemeral
           });
@@ -3280,12 +3280,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.commandName === 'honor') {
 
         if (!interaction.guild) {
-          await interaction.reply({
+          await interaction.editReply({
             content: 'Honor commands can only be used inside a server.',
             flags: MessageFlags.Ephemeral
           });
           return;
         }
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const subcommand = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
@@ -3316,7 +3318,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!executor) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'Could not verify your server permissions.',
               flags: MessageFlags.Ephemeral
             });
@@ -3335,7 +3337,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             );
 
           if (!isHonorManager) {
-            await interaction.reply({
+            await interaction.editReply({
               content:
                 'You need Administrator, Admin, or AAR Moderator permissions to manage Honors.',
               flags: MessageFlags.Ephemeral
@@ -3355,7 +3357,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const selectedHonor = await honor.getHonorById(honorId);
 
           if (!selectedHonor) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'Invalid Honor selection.',
               flags: MessageFlags.Ephemeral
             });
@@ -3371,7 +3373,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
@@ -3385,7 +3387,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             interaction.user.id
           );
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.success
               ? `**${selectedHonor.display_name}** has been awarded to <@${member.id}>.`
               : result.message,
@@ -3407,7 +3409,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const selectedHonor = await honor.getHonorById(honorId);
 
           if (!selectedHonor) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'Invalid Honor selection.',
               flags: MessageFlags.Ephemeral
             });
@@ -3423,7 +3425,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
@@ -3437,7 +3439,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             interaction.user.id
           );
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.success
               ? `**${selectedHonor.display_name}** has been removed from <@${member.id}>.`
               : result.message,
@@ -3465,7 +3467,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
@@ -3483,7 +3485,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             ).join('\n')
             : 'This member has not earned any Honors yet.';
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `**Honors — ${member.displayName}**\n\n${description}`,
             flags: MessageFlags.Ephemeral,
             allowedMentions: { parse: [] }
@@ -3509,7 +3511,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
@@ -3522,7 +3524,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
 
           if (history.length === 0) {
-            await interaction.reply({
+            await interaction.editReply({
               content: `**Honor History — ${member.displayName}**\n\nNo Honor history found.`,
               flags: MessageFlags.Ephemeral
             });
@@ -3575,7 +3577,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             chunks.push(currentChunk);
           }
 
-          await interaction.reply({
+          await interaction.editReply({
             content: chunks[0],
             flags: MessageFlags.Ephemeral,
             allowedMentions: { parse: [] }
@@ -3602,7 +3604,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
           const result = await honor.renameHonor(honorId, newName);
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.message,
             flags: MessageFlags.Ephemeral
           });
@@ -3622,7 +3624,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             layoutMode
           );
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.message,
             flags: MessageFlags.Ephemeral
           });
