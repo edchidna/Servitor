@@ -50,9 +50,9 @@ function createLeaderboardEmbed(scores) {
   }
   return new EmbedBuilder()
     .setColor(0x5865F2)
-    .setTitle('SPACE MARINE 2 — AAR LEADERBOARD')
+    .setTitle('SPACE MARINE 2 — SAGA POINTS LEADERBOARD')
     .setDescription(description)
-    .setFooter({ text: 'All-time rankings | AAR + Trials + Manual Adjustments' })
+    .setFooter({ text: 'All-time Saga Points | AAR + Trials + Manual Adjustments' })
     .setTimestamp();
 }
 
