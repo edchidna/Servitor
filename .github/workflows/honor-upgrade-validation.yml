@@ -31,6 +31,9 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check:syntax
 
+      - name: Run Honor award logic regression tests
+        run: node test-honor-awards.js
+
       - name: Render Saga History test card
         run: node test-saga-history-card.js
 
