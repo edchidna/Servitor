@@ -129,17 +129,30 @@ async function createAarReport({ submitterId, gameMode, reportData, basePoints, 
 
 async function deleteUnlinkedPendingReport(reportId) {
   return database.withTransaction(async tx => {
+    // Confirm eligibility before touching child rows, then delete children
+    // before the parent because foreign-key enforcement is enabled.
+    const eligible = await tx.execute({
+      sql: `SELECT id FROM reports
+            WHERE id = ? AND status = 'pending'
+              AND review_message_id IS NULL`,
+      args: [reportId]
+    });
+    if (eligible.rows.length !== 1) return false;
+
+    await tx.execute({
+      sql: 'DELETE FROM report_participants WHERE report_id = ?',
+      args: [reportId]
+    });
+
     const deleted = await tx.execute({
       sql: `DELETE FROM reports
             WHERE id = ? AND status = 'pending'
               AND review_message_id IS NULL`,
       args: [reportId]
     });
-    if (Number(deleted.rowsAffected) !== 1) return false;
-    await tx.execute({
-      sql: 'DELETE FROM report_participants WHERE report_id = ?',
-      args: [reportId]
-    });
+    if (Number(deleted.rowsAffected) !== 1) {
+      throw new Error(`Unlinked pending AAR report #${reportId} changed during cleanup.`);
+    }
     return true;
   });
 }
