@@ -89,7 +89,8 @@ function validateAutoIncrementSequences(state) {
   for (const row of state.sequences) {
     if (!row || typeof row.name !== 'string' ||
         !allowed.has(row.name) || seen.has(row.name) ||
-        !Number.isSafeInteger(Number(row.seq)) || Number(row.seq) < 0) {
+        typeof row.seq !== 'number' ||
+        !Number.isSafeInteger(row.seq) || row.seq < 0) {
       throw new Error('Backup contains invalid AUTOINCREMENT sequence values.');
     }
     seen.add(row.name);
