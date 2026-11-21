@@ -80,8 +80,7 @@ function validateAutoIncrementSequences(state) {
   )) {
     throw new Error('Backup contains an invalid AUTOINCREMENT table name.');
   }
-  if (new Set(tableNames).size !== tableNames.length ||
-      JSON.stringify([...tableNames].sort()) !== JSON.stringify([...tableNames].sort())) {
+  if (new Set(tableNames).size !== tableNames.length) {
     throw new Error('Backup contains duplicate AUTOINCREMENT table names.');
   }
 
