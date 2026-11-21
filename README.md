@@ -66,7 +66,7 @@ See [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md) for the migration pro
 
 ## Requirements
 
-- Node.js 22.x and npm. The migration utility uses Node's built-in `node:sqlite` API; use a current Node.js 22 release for the full migration and validation toolchain.
+- Node.js 22.x and npm. Use a current Node.js 22 release for the bot, tests, and migration toolchain. The legacy SQLite adapter and current SQLite import utility still use `better-sqlite3`; its native installation is exercised by CI on Ubuntu, while Windows host compatibility must be confirmed separately.
 - A Discord application and bot created in the Discord Developer Portal.
 - A Discord server where the bot can be invited.
 - Access to configure the bot's environment variables and Discord role/channel IDs.
