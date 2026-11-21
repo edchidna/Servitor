@@ -46,7 +46,7 @@ function createLeaderboardEmbed(scores) {
       if (previousPoints === null || points !== previousPoints) currentRank = index + 1;
       previousPoints = points;
       return `**${currentRank}.** <@${member.user_id}> — **${formatPoints(points)} points**`;
-    }).join('\\n');
+    }).join('\n');
   }
   return new EmbedBuilder()
     .setColor(0x5865F2)
