@@ -5534,7 +5534,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
               await sendOrdealReviewAlert(
                 client,
                 `Ordeal #${submissionId || 'Unknown'} Submission Cleanup Needs Attention`,
-                cleanupIssues.join('\\n')
+                cleanupIssues.join('\n')
               );
             } catch (alertError) {
               console.error(
