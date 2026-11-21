@@ -3958,7 +3958,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             '🛡️ Siege\n' +
             '🏆 PVP\n' +
             '🐺 Ordeals\n\n' +
-            'All submitted reports require administrator or AAR Moderator approval before points are awarded.'
+            'All submitted reports require approval from a server Administrator, configured Admin, NCO, or AAR Moderator/High Command member before Saga Points are awarded.'
           )
           .setFooter({
             text: 'Space Marine 2 AAR System | Version 1.0'
