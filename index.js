@@ -712,7 +712,6 @@ const ordeals = [
     description: 'Complete the Lone Wolf challenge.',
     gameMode: 'Operations',
     difficulty: 'Absolute',
-    basePoints: 5,
     rewardRoleId: process.env.LONE_WOLF_ROLE_ID
   },
   {
@@ -721,7 +720,6 @@ const ordeals = [
     description: 'Complete the Double Trouble challenge.',
     gameMode: 'Stratagems',
     difficulty: 'Hard',
-    basePoints: 6,
     rewardRoleId: process.env.DOUBLE_TROUBLE_ROLE_ID
   }
 ];
@@ -4503,7 +4501,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const ordealDescriptions = activeOrdeals
           .map(ordeal =>
-            `• ${ordeal.name}: ${ordeal.gameMode} / ${ordeal.difficulty} / ${ordeal.basePoints} base points.`
+            `• ${ordeal.name}: ${ordeal.gameMode} / ${ordeal.difficulty}.`
           )
           .join('\n');
 
