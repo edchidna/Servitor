@@ -98,7 +98,7 @@ On this branch, application data is stored in the Turso/libSQL database selected
 Open PowerShell in the Servitor project directory.
 
 ```powershell
-cd "C:\Users\edchi\SM2 bot\Servitor"
+cd "C:\path\to\Servitor"
 npm.cmd ci
 ```
 
