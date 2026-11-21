@@ -1,0 +1,43 @@
+name: Honor upgrade validation
+
+on:
+  push:
+    branches:
+      - honor-upgrade/repeat-awards
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Honor feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: honor-upgrade/repeat-awards
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check JavaScript syntax
+        run: npm run check:syntax
+
+      - name: Render Saga History test card
+        run: node test-saga-history-card.js
+
+      - name: Upload test card artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: honor-upgrade-saga-history-card
+          path: saga-history-test.png
+          if-no-files-found: error
+          retention-days: 7
