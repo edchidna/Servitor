@@ -33,7 +33,7 @@ function activeAwards(guildId, userId, honorId) {
 async function execute(sqlOrConfig, args = []) {
   const sql = typeof sqlOrConfig === 'string' ? sqlOrConfig : sqlOrConfig.sql;
   args = typeof sqlOrConfig === 'string' ? args : (sqlOrConfig.args || []);
-  const normalized = sql.replace(/\\s+/g, ' ').trim().toLowerCase();
+  const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
 
   if (normalized.includes('select honor_id, display_name, display_order, icon_path from honors where honor_id =')) {
     const row = getHonor(args[0]);
