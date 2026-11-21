@@ -589,6 +589,6 @@ The same launch gates remain: real SQLite-copy migration rehearsal, remote backu
 - Added the /sagapoint add and /sagapoint deduct commands to the README command reference and corrected Saga Points terminology.
 - Corrected the AAR panel description so it lists all accepted reviewer groups: server Administrators, configured Admins, NCOs, and AAR Moderators/High Command.
 - Removed unused Ordeal base-point values from the challenge definitions and selection display. Ordeals are challenge/role-reward workflows and must not appear to offer point rewards.
-- These latest source/documentation changes were pushed to migration/turso. A fresh GitHub Actions validation run has been triggered; its result must be checked before treating this revision as CI-verified.
+- GitHub Actions run #218 on commit `358667c50bcf1c500accebfa26be2f3e8ca4a6bb` completed successfully after the AAR panel and Ordeal selection corrections. Dependency installation, syntax checks, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed. The subsequent migration-notes-only update does not alter runtime code.
 
 No Discord test server, production database, production backup, hosting service, or live bot was accessed. No merge, deployment, or production cutover occurred.
