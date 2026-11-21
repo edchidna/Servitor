@@ -65,24 +65,34 @@ async function main() {
 
   const honors = [
     {
-      display_name: 'Honor 1',
-      icon_path: 'assets/honors/Conversion ward.png'
+      display_name: 'Conversion Ward',
+      icon_path: 'assets/honors/Conversion ward.png',
+      count: 1
     },
     {
-      display_name: 'Honor 2',
-      icon_path: 'assets/honors/Crux Terminatus.png'
+      display_name: 'Rune',
+      icon_path: 'assets/honors/Rune.png',
+      count: 3
     },
     {
-      display_name: 'Honor 3',
-      icon_path: 'assets/honors/Fang Necklace.png'
+      display_name: 'Gem',
+      icon_path: 'assets/honors/Gem.png',
+      count: 1
     },
     {
-      display_name: 'Honor 4',
-      icon_path: 'assets/honors/Gem.png'
+      display_name: 'Fang Necklace',
+      icon_path: 'assets/honors/Fang Necklace.png',
+      count: 1
     },
     {
-      display_name: 'Honor 5',
-      icon_path: 'assets/honors/Rune.png'
+      display_name: 'Talisman',
+      icon_path: 'assets/honors/Talisman.png',
+      count: 2
+    },
+    {
+      display_name: 'Crux Terminatus',
+      icon_path: 'assets/honors/Crux Terminatus.png',
+      count: 1
     }
   ];
 
@@ -96,8 +106,8 @@ async function main() {
     armouryDataTotal: 4750,
     tenure: '1 Year, 2 Months',
     honorLayout: {
-      leftColumn: honors.slice(0, 3),
-      rightColumn: honors.slice(3)
+      leftColumn: honors.slice(0, 5),
+      rightColumn: honors.slice(5)
     }
   });
 
