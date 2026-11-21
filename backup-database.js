@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const database = require('./turso-database');
 
 function jsonSafe(value) {
@@ -110,7 +111,7 @@ async function backupDatabase() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outputPath = path.join(
       backupDirectory,
-      `servitor-turso-backup-${timestamp}.json`
+      `servitor-turso-backup-${timestamp}-${crypto.randomUUID()}.json`
     );
 
     // Write to a same-directory temporary file first so a process interruption
