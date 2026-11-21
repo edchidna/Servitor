@@ -7,10 +7,8 @@ async function initializeTenureMembers(guildId, members, roleId) {
     for (const member of members) {
       if (member.roles.cache.has(roleId) && member.joinedAt) {
         await tx.execute({
-          sql: `INSERT INTO iron_wolves_tenure (guild_id, user_id, assigned_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(guild_id, user_id)
-                DO UPDATE SET assigned_at = excluded.assigned_at`,
+          sql: `INSERT OR IGNORE INTO iron_wolves_tenure (guild_id, user_id, assigned_at)
+                VALUES (?, ?, ?)`,
           args: [guildId, member.id, member.joinedAt.toISOString()]
         });
       }
@@ -20,10 +18,8 @@ async function initializeTenureMembers(guildId, members, roleId) {
 
 async function setTenure(guildId, userId, assignedAt) {
   await database.execute({
-    sql: `INSERT INTO iron_wolves_tenure (guild_id, user_id, assigned_at)
-          VALUES (?, ?, ?)
-          ON CONFLICT(guild_id, user_id)
-          DO UPDATE SET assigned_at = excluded.assigned_at`,
+    sql: `INSERT OR IGNORE INTO iron_wolves_tenure (guild_id, user_id, assigned_at)
+          VALUES (?, ?, ?)`,
     args: [guildId, userId, assignedAt]
   });
 }
