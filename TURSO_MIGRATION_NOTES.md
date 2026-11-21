@@ -45,7 +45,7 @@ The migration must:
 - AAR submission with participants and evidence.
 - AAR approval: pending-status guard, score ledger, audit entry, review status.
 - AAR rejection and review-message recovery.
-- Ordeal approval/rejection and role reward, ensuring Ordeals do not add AAR points.
+- Ordeal approval/rejection and role reward, ensuring Ordeals award zero Saga Points.
 - Trial approval: progression, role-state tracking, pack-member awards, points ledger, audit log.
 - Trial failed-submission cleanup.
 - Honor award/remove and uniqueness protection.
