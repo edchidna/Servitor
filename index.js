@@ -5097,6 +5097,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 
         const permanentFiles = [];
+        const usedEvidenceNames = new Set();
 
         for (const file of uploadedFiles.values()) {
 
@@ -5129,9 +5130,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
             throw new Error(`Ordeal evidence file "${file.name}" exceeds the 10 MB limit.`);
           }
 
+          const safeEvidenceName = getUniqueAarEvidenceName(
+            file.name,
+            usedEvidenceNames
+          );
+
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
-              name: file.name
+              name: safeEvidenceName
             })
           );
         }
