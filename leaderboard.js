@@ -56,32 +56,16 @@ function createLeaderboardEmbed(scores) {
     .setTimestamp();
 }
 
-let leaderboardRefreshPromise = null;
-let leaderboardRefreshRequested = false;
+let leaderboardRefreshQueue = Promise.resolve();
 
-async function refreshLeaderboard(client) {
-  if (leaderboardRefreshPromise) {
-    // Coalesce overlapping requests but run one more pass so scores written
-    // during the active refresh are not left off the persistent leaderboard.
-    leaderboardRefreshRequested = true;
-    return leaderboardRefreshPromise;
-  }
-
-  leaderboardRefreshPromise = (async () => {
-    let message;
-    do {
-      leaderboardRefreshRequested = false;
-      message = await refreshLeaderboardInternal(client);
-    } while (leaderboardRefreshRequested);
-    return message;
-  })();
-
-  try {
-    return await leaderboardRefreshPromise;
-  } finally {
-    leaderboardRefreshPromise = null;
-    leaderboardRefreshRequested = false;
-  }
+function refreshLeaderboard(client) {
+  // Serialize refreshes so simultaneous approvals cannot create duplicate
+  // leaderboard messages or overwrite a newer score snapshot with an older one.
+  const refresh = leaderboardRefreshQueue.then(
+    () => refreshLeaderboardInternal(client)
+  );
+  leaderboardRefreshQueue = refresh.catch(() => {});
+  return refresh;
 }
 
 async function refreshLeaderboardInternal(client) {
