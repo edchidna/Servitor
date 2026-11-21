@@ -2,7 +2,33 @@
 
 A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge completions, Unproven Trials, Saga Points, member Honors, and Saga History profile cards.
 
-**Documentation scope:** This manual describes the Servitor production repository and its current implementation as reviewed on 16 November 2026. It documents the production configuration and implemented behavior, including relevant limitations. It does not imply that future planned features are already available.
+**Documentation scope:** This manual preserves the existing Servitor feature and Discord-workflow documentation. On `migration/turso`, the persistence implementation is being changed from local SQLite to asynchronous Turso/libSQL; the feature workflows are intended to remain the same. SQLite-specific setup and backup instructions in the preserved manual below describe the `main` branch baseline, not the Turso migration branch.
+
+
+> **Migration branch notice — read before using this branch**
+>
+> This branch uses Turso/libSQL, not the local `aar-database.db` SQLite file. In addition to the existing Discord configuration below, configure:
+>
+> - `TURSO_DATABASE_URL` — the Turso database URL.
+> - `TURSO_AUTH_TOKEN` — a read-write token for the intended Servitor database.
+>
+> Keep credentials in the host's secret/environment settings or an untracked local `.env`; never commit or paste them into chat. Do not use the CI test database for the live bot.
+>
+> The feature descriptions and Discord setup instructions in this manual are retained to avoid losing the existing operator documentation. Sections that specifically describe SQLite files, SQLite backup commands, or the old synchronous database modules are historical `main`-branch instructions and are superseded on this branch by [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md). Use `backup-database.js` and `restore-database.js` for the new logical Turso backup/restore workflow. Do not migrate, deploy, or cut over production until the separate validation gates and explicit approval are complete.
+
+## Turso migration branch — current persistence files
+
+| File | Purpose |
+|---|---|
+| `turso-database.js` | Shared asynchronous libSQL client, transactions, and graceful shutdown |
+| `core-database-schema.js` / `feature-database-schemas.js` | Versioned core, Trial, and Honor schema initialization |
+| `aar-database-turso.js` / `ordeal-database-turso.js` | AAR and Ordeal persistence |
+| `trial-database-turso.js` | Trial submissions, progression, and scoring |
+| `saga-database-turso.js` / `member-database-turso.js` | Saga adjustments and member tenure |
+| `migrate-sqlite-to-turso.js` | One-time import from a separately copied SQLite database into an empty Turso target |
+| `backup-database.js` / `restore-database.js` | Logical JSON backup and clean-target restore |
+
+See [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md) for the migration procedure, validation status, and recovery cautions. See [LIVE_SERVER_CUTOVER_PLAN.md](./LIVE_SERVER_CUTOVER_PLAN.md) for the controlled existing-server cutover sequence and rollback plan.
 
 ## Contents
 
@@ -36,44 +62,44 @@ A Discord bot for managing Space Marine 2 After Action Reports (AARs), challenge
 - Ten configurable Honors with award/revocation history and display layouts.
 - Saga History profile cards generated with Sharp.
 - Combined top-10 Saga Points leaderboard.
-- SQLite persistence.
+- Turso/libSQL persistence on `migration/turso` (SQLite remains the `main` branch baseline).
 
 ## Requirements
 
-- Node.js and npm, using a Node.js release compatible with the dependencies in `package.json`.
+- Node.js 22.x and npm. Use a current Node.js 22 release for the bot, tests, and migration toolchain. The legacy SQLite adapter and current SQLite import utility still use `better-sqlite3`; its native installation is exercised by CI on Ubuntu, while Windows host compatibility must be confirmed separately.
 - A Discord application and bot created in the Discord Developer Portal.
 - A Discord server where the bot can be invited.
 - Access to configure the bot's environment variables and Discord role/channel IDs.
 
-The repository does not currently declare a specific Node.js version in `package.json`. Check dependency compatibility if you encounter a runtime or installation error.
+The GitHub Actions validation workflow uses Node.js 22.
 
 ## Project files
 
 | File or folder | Purpose |
 |---|---|
 | `index.js` | Main bot entry point; AAR, Ordeal, Saga History, role tracking, and interaction handlers |
-| `database.js` | Creates and initializes the SQLite database and AAR/Ordeal tables |
+| `turso-database.js` | Shared asynchronous Turso/libSQL client, transactions, and graceful shutdown |
 | `leaderboard.js` | Calculates and publishes the combined Saga Points leaderboard |
 | `trial.js` | Unproven Trial panels, submissions, reviews, progression, and graduation |
-| `trial-database.js` | Trial persistence and scoring operations |
+| `trial-database-turso.js` | Trial persistence and scoring operations |
 | `honor.js` | Honor award, revocation, history, naming, and layout logic |
-| `honor-database.js` | Honor tables and initial Honor records |
+| `feature-database-schemas.js` | Trial/Honor schema initialization and seeded Honor records |
 | `deploy-commands.js` | Registers the bot's guild slash commands |
-| `test-operations-modal.js` | Focused checks for the Operations modal and related submission logic |
+| `test-operations-modal.js` | Focused Operations modal regression test |
 | `assets/saga-background.png` | Background image used by the Saga History profile card |
 | `assets/fonts/` | Font assets used by the profile card |
 | `package.json` | Project metadata, scripts, and dependencies |
 | `package-lock.json` | Locked dependency versions |
 
-The database is created locally as `aar-database.db`. SQLite may also create `aar-database.db-wal` and `aar-database.db-shm` while using write-ahead logging.
+On this branch, application data is stored in the Turso/libSQL database selected by `TURSO_DATABASE_URL`. A local `file:` URL can be used for isolated development/testing, but do not point the live bot at a test database. The old `aar-database.db` SQLite file is a migration source, not the active runtime database.
 
 ## Installation
 
 Open PowerShell in the Servitor project directory.
 
 ```powershell
-cd C:\Users\edchi\Servitor
-npm.cmd install
+cd "C:\path\to\Servitor"
+npm.cmd ci
 ```
 
 `npm.cmd` is used here to avoid the common Windows PowerShell script-execution restriction affecting `npm.ps1`.
@@ -93,6 +119,8 @@ The bot reads configuration from `.env`.
 | `DISCORD_TOKEN` | Bot token used to log in to Discord |
 | `CLIENT_ID` | Discord application/client ID; used by `deploy-commands.js` |
 | `GUILD_ID` | Discord server ID where slash commands are registered |
+| `TURSO_DATABASE_URL` | Turso/libSQL database URL used by the bot and migration tools |
+| `TURSO_AUTH_TOKEN` | Read-write authentication token for the configured remote Turso database |
 | `REPORT_CHANNEL_ID` | Channel where an administrator publishes the AAR submission panel |
 | `REVIEW_CHANNEL_ID` | Channel receiving Operations, Stratagems, Siege, and PVP reports for review |
 | `LEADERBOARD_CHANNEL_ID` | Channel where the persistent Saga Points leaderboard is posted or updated |
@@ -122,6 +150,9 @@ An Ordeal challenge without its configured reward role is not available for sele
 Replace every placeholder with the actual value from your Discord application/server. These are placeholders, not working credentials.
 
 ```dotenv
+TURSO_DATABASE_URL=libsql://YOUR_DATABASE-HOST.turso.io
+TURSO_AUTH_TOKEN=YOUR_READ_WRITE_DATABASE_TOKEN
+
 DISCORD_TOKEN=YOUR_BOT_TOKEN
 CLIENT_ID=YOUR_DISCORD_APPLICATION_ID
 GUILD_ID=YOUR_DISCORD_SERVER_ID
@@ -201,6 +232,8 @@ Current commands:
 | `/aar-help` | Displays AAR and Honor system information |
 | `/aar-panel` | Publishes the AAR submission panel |
 | `/sagahistory [member]` | Displays a member's Saga History profile card |
+| `/sagapoint add` | Adds Saga Points to a member with a required reason |
+| `/sagapoint deduct` | Deducts Saga Points from a member with a required reason |
 | `/honor give` | Awards an Honor to a member |
 | `/honor remove` | Revokes an active Honor |
 | `/honor list [member]` | Shows a member's active Honors |
@@ -228,7 +261,7 @@ When the bot becomes ready, it:
 
 Keep the process running for the bot to remain online. For production use, run it on a reliable always-on host and arrange a safe restart strategy.
 
-The first startup initializes the local SQLite database and may create or update database records. Back up any existing database before replacing or changing production data.
+On this branch, startup initializes the configured Turso/libSQL schemas and verifies required Discord destinations. Do not run the bot against production while migration and acceptance testing are still outstanding.
 
 ## AAR system
 
@@ -252,7 +285,7 @@ The submitter selects:
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included, so a squad can contain up to three unique members.
 
@@ -281,7 +314,7 @@ The submitter selects:
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included. Maximum squad size is three.
 
@@ -292,7 +325,7 @@ The submitter enters:
 - Difficulty: Normal or Hard.
 - A positive whole number of waves completed.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included. Maximum squad size is three. Scoring counts completed groups of five waves; incomplete groups do not add base points.
 
@@ -303,7 +336,7 @@ The submitter selects:
 - Game mode: Capture and Control, Seize Ground, Annihilation, or Helbrute Onslaught.
 - Result: Victory or Defeat.
 - Up to two additional squad members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 The submitter is automatically included. Maximum squad size is three.
 
@@ -311,13 +344,13 @@ The submitter is automatically included. Maximum squad size is three.
 
 For regular AAR submissions, the bot:
 
-1. Receives one to six uploaded files.
+1. Receives one to six uploaded files (10 MB maximum per file).
 2. Downloads the original files.
 3. Generates an evidence collage when supported image files are present.
 4. Posts a review embed in `REVIEW_CHANNEL_ID`.
 5. Creates a thread under the review message for the original evidence files.
 6. Adds ✅ and ❌ reactions to the review message.
-7. Stores report data and evidence references in SQLite.
+7. Stores report data and evidence references in Turso/libSQL.
 
 The collage is a review convenience; original uploads are retained in the evidence thread. Image collage generation supports common image formats handled by the implementation, including PNG, JPEG, GIF, and WebP. Non-image evidence can remain in the original evidence thread even when it cannot be included in the collage.
 
@@ -348,7 +381,7 @@ On approval:
 - The reviewer decision is recorded in the audit log.
 - The leaderboard is refreshed.
 
-On rejection, no AAR points are awarded. The decision is recorded.
+On rejection, no Saga Points are awarded. The decision is recorded.
 
 The AAR panel's descriptive text should identify Administrators, Admins, NCOs, and AAR Moderators/High Command as the permitted reviewers.
 
@@ -415,7 +448,7 @@ A +1 squad bonus applies when the report has more than one participant.
 
 Ordeals are a separate challenge-completion workflow with their own review channel and reward roles. They are not regular AAR submissions.
 
-**Ordeals award zero AAR points. They do not contribute to the Saga Points leaderboard.**
+**Ordeals award zero Saga Points. They do not contribute to the Saga Points leaderboard.**
 
 ### Configured challenges
 
@@ -435,7 +468,7 @@ Depending on the challenge, the form collects:
 - Operation name for Operations-based challenges.
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 A squad must contain between one and three unique participants. Challenge completers must be included among the participants; the submitter and completers cannot be selected again as additional teammates.
 
@@ -467,7 +500,7 @@ The Trial panel is published in `TRIAL_PANEL_CHANNEL_ID` by the bot's startup ro
 - One or two Trial Completers.
 - Trial 1, Trial 2, or Trial 3.
 - One or two Pack Members.
-- One to six evidence files.
+- One to six evidence files (10 MB maximum per file).
 
 Validation rules:
 
@@ -475,7 +508,7 @@ Validation rules:
 - At least one Pack Member must have the configured NCO role.
 - The combined squad cannot exceed three participants.
 - Participants must be valid, non-bot members of the server.
-- Each evidence file is limited to 10 MB by the Trial submission handler.
+- Each evidence file is limited to 10 MB by the submission handler.
 
 The submission is sent to `TRIAL_REVIEW_CHANNEL_ID`. A collage is attached when possible, and original evidence files are stored in a thread under the review message.
 
@@ -490,7 +523,7 @@ Trial reviews use Approve and Reject buttons. Reviewers must have at least one o
 
 The review must occur in `TRIAL_REVIEW_CHANNEL_ID` and must reference the original pending review message.
 
-Unlike regular AAR and Ordeal reviews, Trial reviews intentionally do not block a reviewer from reviewing their own submission.
+Self-review is prohibited: the Trial submitter, Trial Completers, and Pack Members cannot approve or reject that same submission.
 
 ### Progression and graduation
 
@@ -612,7 +645,7 @@ The bot maintains an all-time top-10 leaderboard in `LEADERBOARD_CHANNEL_ID`.
 
 The leaderboard includes:
 
-- Approved regular AAR points.
+- Saga Points earned from approved regular AAR reports.
 - Approved Trial Pack Member points.
 
 It excludes:
@@ -626,54 +659,35 @@ The bot stores the leaderboard message ID in `bot_settings` and edits the saved 
 
 ## Database and persistence
 
-The project uses SQLite through `better-sqlite3`.
+Application persistence on `migration/turso` uses the asynchronous `@libsql/client` driver and the database configured by `TURSO_DATABASE_URL`.
 
-The main database file is:
-
-```text
-aar-database.db
-```
-
-SQLite write-ahead logging is enabled (`journal_mode=WAL`), and foreign-key enforcement is enabled.
-
-The database stores AAR reports, participants, score ledgers, audit records, Ordeal submissions, Trial records, Honor records, settings, and Iron Wolves tenure data.
+The database stores AAR reports, participants, score ledgers, audit records, Ordeal submissions, Trial records, Honor records, settings, Saga adjustments, and Iron Wolves tenure data. Schema initialization is handled by `core-database-schema.js` and `feature-database-schemas.js`.
 
 Important persistence notes:
 
-- Database files are local runtime data and are ignored by Git.
-- Do not delete `aar-database.db` to troubleshoot the bot unless you intentionally want to remove the stored data.
-- The `-wal` and `-shm` files are SQLite runtime sidecars; do not manually edit them.
-- Back up the database before making database/schema changes or moving the bot to another host.
-- Stop the bot cleanly before manually copying the database files.
+- `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` must refer to the intended database and remain secret environment values.
+- Use a dedicated disposable Turso database for remote tests; never reuse it for the live bot, migration rehearsal, or restore rehearsal.
+- The old `aar-database.db` file is the SQLite migration source. Never overwrite, delete, or use the production source as a rehearsal target.
+- `migrate-sqlite-to-turso.js` imports from a separately copied SQLite source into an empty Turso target and verifies row counts/content digests.
+- `backup-database.js` creates a logical JSON backup. `restore-database.js` restores only into a clean, correctly initialized target; it refuses to merge into populated application tables.
+- Restore commits each table separately, not the entire database atomically. If a later table fails, discard/reset the disposable target before retrying; do not point Servitor at a partially restored target.
+- Keep the original production SQLite database and its independent backup untouched until a separately approved cutover plan is executed.
 
-Database initialization and migrations run through the database modules when the bot starts.
-
-The production Servitor setup is intended to begin with a fresh database. Do not copy development or test database files into production unless a deliberate migration has been planned and approved.
-
+See `TURSO_MIGRATION_NOTES.md` for the detailed rehearsal procedure, verification requirements, and outstanding launch gates.
 ## Testing
 
-The repository contains a focused Operations modal test script. Run it from the project root:
+Available automated checks are exposed as npm scripts:
 
 ```powershell
-node test-operations-modal.js
+npm.cmd run check:syntax
+npm.cmd run test:libsql
+npm.cmd run test:operations-modal
+npm.cmd run test:turso-remote-fk
 ```
 
-The script checks the Operations modal structure, field constraints, difficulty values, difficulty-selection workflow, and participant-selection helper behavior.
+The remote Turso persistence suite is included in `test:libsql` when the dedicated remote test credentials are configured in CI. `test:turso-remote-fk` requires a separate empty disposable remote test database and must never be pointed at production.
 
-There is currently no `test` script in `package.json`, so `npm.cmd test` is not configured. The Operations test is not a full Discord integration test and does not verify live server permissions, channel configuration, role hierarchy, or end-to-end review behavior.
-
-JavaScript syntax can be checked separately:
-
-```powershell
-node --check .\index.js
-node --check .\trial.js
-node --check .\trial-database.js
-node --check .\database.js
-node --check .\leaderboard.js
-```
-
-A syntax check does not start the bot or verify live Discord behavior.
-
+These checks do not start a live Discord bot or verify server permissions, role hierarchy, channel configuration, real evidence uploads, or complete end-to-end review behaviour. Review `TURSO_MIGRATION_NOTES.md` for the latest verified CI run and remaining acceptance gates.
 ## Troubleshooting
 
 ### Bot does not start
@@ -735,7 +749,8 @@ The following are operational limitations or implementation details worth unders
 2. **Trial preview and approval:** Eligible Pack Members receive +2 Saga Points at approval, not +3. Members who still have the Unproven role at review receive zero.
 3. **AAR panel description:** The AAR review permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators/High Command. The panel description should reflect all four accepted permission paths.
 4. **No npm test script:** `test-operations-modal.js` is a standalone focused test, not a complete automated test suite.
-5. **Discord-side verification:** Local syntax checks and the Operations regression test do not replace live testing of channel permissions, role hierarchy, evidence uploads, reactions, and review workflows.
+5. **Trial self-review:** The submitter, Trial Completers, and Pack Members are prohibited from reviewing their own Trial submission.
+6. **Discord-side verification:** Automated checks do not replace live testing of channel permissions, role hierarchy, evidence uploads, reactions, and review workflows.
 
 ## License
 

@@ -20,8 +20,8 @@ const {
     SeparatorBuilder
 } = require('discord.js');
 
-const trialDatabase = require('./trial-database');
-const db = trialDatabase.db;
+const trialDatabase = require('./trial-database-turso');
+const database = require('./turso-database');
 
 // Prevent simultaneous Trial reviews of the same submission.
 const processingTrialReviews = new Set();
@@ -80,7 +80,7 @@ function createTrialPanelPayload() {
                 '• Select 1–2 Trial Completers.',
                 '• Select the Trial completed.',
                 '• Select 1–2 Pack Members.',
-                '• Upload 1–6 evidence files.',
+                '• Upload 1–6 evidence files (10 MB maximum each).',
                 '',
                 '**Important:**',
                 'At least one NCO must be selected as a Pack Member.',
@@ -162,7 +162,7 @@ function createTrialSubmissionModal() {
 
             new LabelBuilder()
                 .setLabel('Evidence Files')
-                .setDescription('Upload 1–6 proof images or files.')
+                .setDescription('Upload 1–6 proof images or files (10 MB maximum per file).')
                 .setFileUploadComponent(evidenceUpload)
 
         );
@@ -466,10 +466,15 @@ async function downloadTrialEvidence(uploadedFiles) {
 
     for (const file of uploadedFiles.values()) {
 
-        // Check individual file size (10 MB maximum)
-        if (file.size > 10 * 1024 * 1024) {
+        // Check individual file size (10 MB maximum).
+        const maxFileBytes = 10 * 1024 * 1024;
+        if (
+            !Number.isSafeInteger(file.size) ||
+            file.size <= 0 ||
+            file.size > maxFileBytes
+        ) {
             throw new Error(
-                `Evidence file "${file.name}" exceeds the 10 MB limit.`
+                `Evidence file "${file.name}" must be between 1 byte and 10 MB.`
             );
         }
 
@@ -480,7 +485,9 @@ async function downloadTrialEvidence(uploadedFiles) {
             );
         }
 
-        const response = await fetch(file.url);
+        const response = await fetch(file.url, {
+            signal: AbortSignal.timeout(30_000)
+        });
 
         if (!response.ok) {
             throw new Error(
@@ -488,9 +495,21 @@ async function downloadTrialEvidence(uploadedFiles) {
             );
         }
 
+        const contentLength = Number(response.headers.get('content-length'));
+        if (Number.isFinite(contentLength) && contentLength > maxFileBytes) {
+            throw new Error(
+                `Evidence file "${file.name}" exceeds the 10 MB limit.`
+            );
+        }
+
         const buffer = Buffer.from(
             await response.arrayBuffer()
         );
+        if (buffer.length > maxFileBytes) {
+            throw new Error(
+                `Evidence file "${file.name}" exceeds the 10 MB limit.`
+            );
+        }
 
         evidenceFiles.push({
             name: file.name,
@@ -615,17 +634,11 @@ function buildTrialReviewContainer(data) {
 // GET TRIAL COMPLETER PROGRESSION
 // ==========================================
 
-function getTrialCompleterProgress(completers) {
-    return completers.map(member => {
-        const progress = trialDatabase.getMemberTrialProgress(
-            member.id
-        );
-
-        return {
-            id: member.id,
-            progress
-        };
-    });
+async function getTrialCompleterProgress(completers) {
+    return Promise.all(completers.map(async member => ({
+        id: member.id,
+        progress: await trialDatabase.getMemberTrialProgress(member.id)
+    })));
 }
 
 // ==========================================
@@ -644,6 +657,11 @@ async function handleTrialSubmission(interaction) {
     let reviewMessage = null;
 
     try {
+        // Acknowledge immediately before any guild or database network calls.
+        await interaction.deferReply({
+            flags: 64
+        });
+
         // ----------------------------------
         // READ FORM ANSWERS
         // ----------------------------------
@@ -701,14 +719,6 @@ async function handleTrialSubmission(interaction) {
         );
 
         // ----------------------------------
-        // DEFER RESPONSE
-        // ----------------------------------
-
-        await interaction.deferReply({
-            flags: 64
-        });
-
-        // ----------------------------------
         // DOWNLOAD EVIDENCE
         // ----------------------------------
 
@@ -729,7 +739,7 @@ async function handleTrialSubmission(interaction) {
             packMembers
         );
 
-        submissionId = trialDatabase.createTrialSubmission({
+        submissionId = await trialDatabase.createTrialSubmission({
             submitterId: interaction.user.id,
             trialKey,
             evidence: evidenceRecords,
@@ -758,7 +768,7 @@ async function handleTrialSubmission(interaction) {
         // GET COMPLETER PROGRESSION
         // ----------------------------------
 
-        const completerProgress = getTrialCompleterProgress(
+        const completerProgress = await getTrialCompleterProgress(
             completers
         );
 
@@ -808,7 +818,7 @@ async function handleTrialSubmission(interaction) {
         // SAVE DISCORD REFERENCES
         // ----------------------------------
 
-        trialDatabase.setTrialDiscordReferences({
+        await trialDatabase.setTrialDiscordReferences({
             submissionId,
             reviewMessageId: reviewMessage.id,
             evidenceThreadId: null
@@ -853,17 +863,12 @@ async function handleTrialSubmission(interaction) {
             };
         });
 
-        const evidenceUpdate = db.prepare(`
-            UPDATE trial_submissions
-            SET evidence = ?
-            WHERE id = ?
-              AND status = 'pending'
-        `).run(
-            JSON.stringify(archivedEvidence),
-            submissionId
-        );
+        const evidenceUpdate = await database.execute({
+            sql: 'UPDATE trial_submissions SET evidence = ? WHERE id = ? AND status = \'pending\'',
+            args: [JSON.stringify(archivedEvidence), submissionId]
+        });
 
-        if (evidenceUpdate.changes !== 1) {
+        if (Number(evidenceUpdate.rowsAffected) !== 1) {
             throw new Error(
                 `Could not archive evidence for Trial submission #${submissionId}.`
             );
@@ -891,18 +896,16 @@ async function handleTrialSubmission(interaction) {
     } catch (error) {
         console.error('Trial submission failed:', error);
 
-
-        if (reviewMessage) {
-            await reviewMessage.delete().catch(console.error);
-        }
-
-        // ----------------------------------
-        // CLEAN UP DATABASE RECORD
-        // ----------------------------------
+        // Delete the Discord review card only after the database confirms that
+        // the submission was still pending and has actually been removed.
+        // A moderator may have reviewed it while the submitter's final response
+        // or discrepancy alert was being sent.
+        let pendingRecordRemoved = false;
+        const cleanupIssues = [];
 
         if (submissionId !== null) {
             try {
-                trialDatabase.deletePendingTrialSubmission(
+                pendingRecordRemoved = await trialDatabase.deletePendingTrialSubmission(
                     submissionId
                 );
             } catch (cleanupError) {
@@ -910,19 +913,61 @@ async function handleTrialSubmission(interaction) {
                     'Trial database cleanup failed:',
                     cleanupError
                 );
+                cleanupIssues.push(
+                    `Could not remove pending Trial submission #${submissionId}: ${cleanupError.message}`
+                );
+            }
+        }
+
+        if (reviewMessage && pendingRecordRemoved) {
+            try {
+                await reviewMessage.delete();
+            } catch (messageDeleteError) {
+                console.error(
+                    `Could not delete incomplete Trial review message for #${submissionId}:`,
+                    messageDeleteError
+                );
+                cleanupIssues.push(
+                    `Could not delete incomplete Discord review message ${reviewMessage.url}.`
+                );
+            }
+        } else if (reviewMessage && !pendingRecordRemoved) {
+            cleanupIssues.push(
+                `Trial submission #${submissionId} was not removed as pending; its review message was retained to avoid deleting a possibly finalized review. Message: ${reviewMessage.url}`
+            );
+        }
+
+        if (cleanupIssues.length > 0) {
+            try {
+                await sendTrialDiscrepancyAlert(interaction.client, {
+                    title: 'Trial Submission Cleanup Needs Attention',
+                    description: cleanupIssues.join('\n'),
+                    userId: interaction.user.id,
+                    reason: 'Trial submission cleanup could not safely remove all incomplete records or messages.'
+                });
+            } catch (alertError) {
+                console.error(
+                    `Could not send Trial submission cleanup alert for #${submissionId}:`,
+                    alertError
+                );
             }
         }
 
         const errorMessage =
             error.message || 'An unexpected error occurred.';
+        const cleanupNote = pendingRecordRemoved
+            ? '\n\nThe incomplete pending submission was removed. Please submit again.'
+            : submissionId !== null
+                ? '\n\nThe submission record was not removed and its review message was retained because it may already have been reviewed. Please contact an Administrator or NCO before retrying.'
+                : '';
 
         if (interaction.deferred || interaction.replied) {
             await interaction.editReply({
-                content: `Your Trial submission could not be completed: ${errorMessage}`
+                content: `Your Trial submission could not be completed: ${errorMessage}${cleanupNote}`
             }).catch(console.error);
         } else {
             await interaction.reply({
-                content: `Your Trial submission could not be completed: ${errorMessage}`,
+                content: `Your Trial submission could not be completed: ${errorMessage}${cleanupNote}`,
                 flags: 64
             }).catch(console.error);
         }
@@ -952,6 +997,9 @@ async function processTrialReviewDecision(interaction) {
             return true;
         }
 
+        // Acknowledge before fetching Discord members or reading the database.
+        await interaction.deferReply({ ephemeral: true });
+
         // Fetch the reviewer as a full GuildMember.
         const reviewer = await interaction.guild.members.fetch(interaction.user.id);
 
@@ -963,50 +1011,58 @@ async function processTrialReviewDecision(interaction) {
             memberHasRole(reviewer, MODERATOR_ROLE_ID);
 
         if (!isAuthorized) {
-            await interaction.reply({
-                content: 'You do not have permission to review Unproven Trial submissions.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'You do not have permission to review Unproven Trial submissions.'
             });
             return true;
         }
 
         // Reviews must take place in the configured Trial review channel.
         if (interaction.channelId !== TRIAL_REVIEW_CHANNEL_ID) {
-            await interaction.reply({
-                content: 'Trial submissions must be reviewed in the designated Trial review channel.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'Trial submissions must be reviewed in the designated Trial review channel.'
             });
             return true;
         }
 
         // Confirm that this is a genuine, pending submission and its original review message.
-        const submission = trialDatabase.getTrialSubmission(submissionId);
+        const submission = await trialDatabase.getTrialSubmission(submissionId);
 
         if (!submission) {
-            await interaction.reply({
-                content: 'This Trial submission could not be found.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'This Trial submission could not be found.'
             });
             return true;
         }
 
         if (submission.status !== 'pending') {
-            await interaction.reply({
-                content: `This submission has already been ${submission.status}.`,
-                ephemeral: true
+            await interaction.editReply({
+                content: `This submission has already been ${submission.status}.`
             });
             return true;
         }
 
         if (String(submission.review_message_id) !== String(interaction.message.id)) {
-            await interaction.reply({
-                content: 'This button does not belong to the original Trial review message.',
-                ephemeral: true
+            await interaction.editReply({
+                content: 'This button does not belong to the original Trial review message.'
             });
             return true;
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        // A reviewer must not approve or reject their own submission or a
+        // submission in which they participated as a Trial Completer or Pack Member.
+        const isSubmitter = submission.submitter_id === interaction.user.id;
+        const isParticipant = [
+            ...submission.completers,
+            ...submission.pack_members
+        ].some(member => member.user_id === interaction.user.id);
+
+        if (isSubmitter || isParticipant) {
+            await interaction.editReply({
+                content: 'You cannot review a Trial submission that you submitted or participated in.'
+            });
+            return true;
+        }
 
         // Check Pack Members' current Unproven role status at review time.
         const packMemberRoleStatuses = {};
@@ -1110,18 +1166,10 @@ async function processTrialReviewDecision(interaction) {
 
                     // Record tenure only if no record already exists.
                     // This prevents accidentally resetting existing tenure.
-                    db.prepare(`
-                INSERT OR IGNORE INTO iron_wolves_tenure (
-                    guild_id,
-                    user_id,
-                    assigned_at
-                )
-                VALUES (?, ?, ?)
-            `).run(
-                        interaction.guild.id,
-                        member.id,
-                        new Date().toISOString()
-                    );
+                    await database.execute({
+                        sql: 'INSERT OR IGNORE INTO iron_wolves_tenure (guild_id, user_id, assigned_at) VALUES (?, ?, ?)',
+                        args: [interaction.guild.id, member.id, new Date().toISOString()]
+                    });
 
                     console.log(
                         `[Iron Wolves] Graduation reward processed for ${member.user.tag}.`
@@ -1230,7 +1278,7 @@ async function processTrialReviewDecision(interaction) {
                 );
             }
 
-            const resultCompleters = getTrialCompleterProgress(
+            const resultCompleters = await getTrialCompleterProgress(
                 submission.completers.map(member => ({
                     id: member.user_id
                 }))
@@ -1359,11 +1407,11 @@ async function handleTrialReviewReaction(reaction, user) {
             return false;
         }
 
-        const submissionRecord = db.prepare(`
-            SELECT id
-            FROM trial_submissions
-            WHERE review_message_id = ?
-        `).get(message.id);
+        const submissionResult = await database.execute({
+            sql: 'SELECT id FROM trial_submissions WHERE review_message_id = ?',
+            args: [message.id]
+        });
+        const submissionRecord = submissionResult.rows[0];
 
         if (!submissionRecord) {
             await resolvedReaction.users.remove(user.id).catch(() => {});
@@ -1414,7 +1462,7 @@ async function handleTrialReviewReaction(reaction, user) {
 
         await processTrialReviewDecision(adapter);
 
-        const updatedSubmission = trialDatabase.getTrialSubmission(submissionId);
+        const updatedSubmission = await trialDatabase.getTrialSubmission(submissionId);
 
         if (updatedSubmission && updatedSubmission.status !== 'pending') {
             await message.reactions.removeAll().catch(error => {
@@ -1453,7 +1501,7 @@ async function handleTrialMemberUpdate(oldMember, newMember) {
         }
 
         // Check permanent Trial progression.
-        const progress = trialDatabase.getMemberTrialProgress(newMember.id);
+        const progress = await trialDatabase.getMemberTrialProgress(newMember.id);
 
         if (!progress || !progress.graduated) {
             return;

@@ -5,13 +5,21 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy-commands.js",
+    "backup": "node backup-database.js",
+    "migrate:sqlite-to-turso": "node migrate-sqlite-to-turso.js",
+    "check:syntax": "for file in *.js test/*.js; do node --check \"$file\" || exit 1; done",
+    "test:libsql": "node --test test/*.test.js",
+    "test:turso-remote-fk": "node test/turso-remote-foreign-key-smoke.js",
+    "restore": "node restore-database.js",
+    "test:operations-modal": "node test-operations-modal.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "better-sqlite3": "^13.0.3",
     "discord.js": "^14.28.1",
     "dotenv": "^18.0.10",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "@libsql/client": "0.18.0"
   }
 }

@@ -1,0 +1,62 @@
+name: Turso migration validation
+
+on:
+  push:
+    branches:
+      - migration/turso
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Push and pull_request events can target the same disposable remote database.
+# Serialize the entire workflow so two smoke suites never mutate it concurrently.
+concurrency:
+  group: servitor-turso-migration-validation
+  cancel-in-progress: false
+
+jobs:
+  syntax-and-dependency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURSO_TEST_DATABASE_URL: ${{ secrets.TURSO_TEST_DATABASE_URL }}
+      TURSO_TEST_AUTH_TOKEN: ${{ secrets.TURSO_TEST_AUTH_TOKEN }}
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/turso
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies from the committed lockfile
+        run: npm ci
+
+      - name: Check JavaScript syntax
+        run: npm run check:syntax
+
+      - name: Run local libSQL migration smoke tests
+        run: env -u TURSO_TEST_DATABASE_URL -u TURSO_TEST_AUTH_TOKEN npm run test:libsql
+
+      - name: Run Operations modal workflow regression test
+        run: npm run test:operations-modal
+
+      - name: Run full persistence suite against disposable remote Turso
+        if: ${{ env.TURSO_TEST_DATABASE_URL != '' && env.TURSO_TEST_AUTH_TOKEN != '' }}
+        run: npm run test:libsql
+
+      - name: Probe foreign-key enforcement on disposable remote Turso
+        if: ${{ env.TURSO_TEST_DATABASE_URL != '' && env.TURSO_TEST_AUTH_TOKEN != '' }}
+        run: npm run test:turso-remote-fk
+
+      - name: Report remote Turso probe not configured
+        if: ${{ env.TURSO_TEST_DATABASE_URL == '' || env.TURSO_TEST_AUTH_TOKEN == '' }}
+        run: echo "Remote Turso probe skipped; configure dedicated TURSO_TEST_DATABASE_URL and TURSO_TEST_AUTH_TOKEN repository secrets."

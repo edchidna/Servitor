@@ -1,7 +1,16 @@
 
 require('dotenv').config();
 
-const db = require('./database');
+const database = require('./turso-database');
+const { initializeCoreSchema } = require('./core-database-schema');
+const {
+  initializeTrialSchema,
+  initializeHonorSchema
+} = require('./feature-database-schemas');
+const aarDatabase = require('./aar-database-turso');
+const ordealDatabase = require('./ordeal-database-turso');
+const sagaDatabase = require('./saga-database-turso');
+const memberDatabase = require('./member-database-turso');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
 const { Resvg } = require('@resvg/resvg-js');
@@ -703,7 +712,6 @@ const ordeals = [
     description: 'Complete the Lone Wolf challenge.',
     gameMode: 'Operations',
     difficulty: 'Absolute',
-    basePoints: 5,
     rewardRoleId: process.env.LONE_WOLF_ROLE_ID
   },
   {
@@ -712,7 +720,6 @@ const ordeals = [
     description: 'Complete the Double Trouble challenge.',
     gameMode: 'Stratagems',
     difficulty: 'Hard',
-    basePoints: 6,
     rewardRoleId: process.env.DOUBLE_TROUBLE_ROLE_ID
   }
 ];
@@ -748,6 +755,18 @@ const client = new Client({
 
 // Stores each user's selected difficulty
 // until they submit their Operations report.
+let aarRecoveryInterval = null;
+let veteranPromotionInterval = null;
+let shutdownPromise = null;
+let databaseReady = false;
+let shuttingDown = false;
+
+// Hosting readiness requires both an initialized database and a connected
+// Discord client. client.isReady() naturally becomes false during reconnects.
+keep_alive.setReadinessCheck(() =>
+  databaseReady && client.isReady() && !shuttingDown
+);
+
 const pendingDifficultySelections = new Map();
 const pendingStratagemDifficultySelections = new Map();
 const pendingSiegeDifficultySelections = new Map();
@@ -779,31 +798,11 @@ client.once(Events.ClientReady, async (readyClient) => {
 
       const members = await guild.members.fetch();
 
-      const insertTenure = db.prepare(`
-  INSERT OR REPLACE INTO iron_wolves_tenure (
-    guild_id,
-    user_id,
-    assigned_at
-  )
-  VALUES (?, ?, ?)
-`);
-
-      const initializeMembers = db.transaction(() => {
-        for (const member of members.values()) {
-          if (
-            member.roles.cache.has(process.env.IRON_WOLVES_ROLE_ID) &&
-            member.joinedAt
-          ) {
-            insertTenure.run(
-              guild.id,
-              member.id,
-              member.joinedAt.toISOString()
-            );
-          }
-        }
-      });
-
-      initializeMembers();
+      await memberDatabase.initializeTenureMembers(
+        guild.id,
+        members.values(),
+        process.env.IRON_WOLVES_ROLE_ID
+      );
 
       console.log(
         `[Iron Wolves] Existing member initialization completed in ${guild.name}.`
@@ -843,14 +842,21 @@ client.once(Events.ClientReady, async (readyClient) => {
   // Run once when Servitor starts.
   await runAarRecovery();
 
+  // Ensure the persistent leaderboard exists and reflects current approved scores.
+  try {
+    await refreshLeaderboard(readyClient);
+  } catch (error) {
+    console.error('[Leaderboard] Startup refresh failed:', error);
+  }
+
   // Retry failed review-card updates every 5 minutes.
-  setInterval(runAarRecovery, 5 * 60 * 1000);
+  aarRecoveryInterval = setInterval(runAarRecovery, 5 * 60 * 1000);
 
   // Automatic Veteran promotion check.
   await checkVeteranPromotion();
 
   // Repeat the check every 24 hours.
-  setInterval(checkVeteranPromotion, 24 * 60 * 60 * 1000);
+  veteranPromotionInterval = setInterval(checkVeteranPromotion, 24 * 60 * 60 * 1000);
 });
 
 
@@ -887,16 +893,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     if (!hadIronWolvesRole && hasIronWolvesRole) {
 
       if (newMember.joinedAt) {
-        db.prepare(`
-      INSERT INTO iron_wolves_tenure (
-        guild_id,
-        user_id,
-        assigned_at
-      )
-      VALUES (?, ?, ?)
-      ON CONFLICT(guild_id, user_id)
-      DO UPDATE SET assigned_at = excluded.assigned_at
-    `).run(
+        await memberDatabase.setTenure(
           newMember.guild.id,
           newMember.id,
           newMember.joinedAt.toISOString()
@@ -911,13 +908,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     // Member loses Iron Wolves.
     if (hadIronWolvesRole && !hasIronWolvesRole) {
 
-      db.prepare(`
-        DELETE FROM iron_wolves_tenure
-        WHERE guild_id = ? AND user_id = ?
-      `).run(
-        newMember.guild.id,
-        newMember.id
-      );
+      await memberDatabase.clearTenure(newMember.guild.id, newMember.id);
 
       console.log(
         `[Iron Wolves] Tenure record reset for ${newMember.user.tag}.`
@@ -939,13 +930,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 client.on(Events.GuildMemberRemove, async (member) => {
   try {
 
-    db.prepare(`
-      DELETE FROM iron_wolves_tenure
-      WHERE guild_id = ? AND user_id = ?
-    `).run(
-      member.guild.id,
-      member.id
-    );
+    await memberDatabase.clearTenure(member.guild.id, member.id);
 
     console.log(
       `[Iron Wolves] Tenure record cleared for departing member ${member.user.tag}.`
@@ -1033,7 +1018,7 @@ function createOperationsModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
 
     );
@@ -1143,7 +1128,7 @@ function createPvpModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
     );
 }
@@ -1189,7 +1174,7 @@ function createStratagemsModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
 
     );
@@ -1236,7 +1221,7 @@ function createSiegeModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
     );
 }
@@ -1291,7 +1276,7 @@ function createOrdealModal(ordeal) {
       new LabelBuilder()
         .setLabel('Challenge Evidence')
         .setDescription(
-          'Upload 1 to 6 proof images or files.'
+          'Upload 1 to 6 proof images or files (10 MB maximum per file).'
         )
         .setFileUploadComponent(evidenceUpload)
     );
@@ -1473,13 +1458,32 @@ async function prepareAarEvidenceFiles(uploadedFiles) {
 
   for (const file of uploadedFileList) {
 
-    const response = await fetch(file.url);
+    const maxFileBytes = 10 * 1024 * 1024;
+    if (
+      !Number.isSafeInteger(file.size) ||
+      file.size <= 0 ||
+      file.size > maxFileBytes
+    ) {
+      throw new Error(`AAR evidence file "${file.name}" must be between 1 byte and 10 MB.`);
+    }
+
+    const response = await fetch(file.url, {
+      signal: AbortSignal.timeout(30_000)
+    });
 
     if (!response.ok) {
       throw new Error(`Could not download ${file.name}`);
     }
 
+    const contentLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > maxFileBytes) {
+      throw new Error(`AAR evidence file "${file.name}" exceeds the 10 MB limit.`);
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxFileBytes) {
+      throw new Error(`AAR evidence file "${file.name}" exceeds the 10 MB limit.`);
+    }
 
     const name = getUniqueAarEvidenceName(
       file.name,
@@ -1686,7 +1690,7 @@ function buildOrdealReviewContainer({
       : []),
     `**Gene Seed:** ${submission.gene_seed ?? 'Not specified'}`,
     `**Armoury Data:** ${submission.armoury_data ?? 'Not specified'}`,
-    '**AAR Points:** 0 (Ordeals do not affect the leaderboard)'
+    '**Saga Points:** 0 (Ordeals do not affect the leaderboard)'
   ].join('\n');
 
   const suspiciousWarning = Number(submission.suspicious_flag) === 1
@@ -1742,20 +1746,12 @@ function buildOrdealReviewContainer({
   return container;
 }
 
-function buildAarApprovalResult(report, participants, reviewerId) {
+async function buildAarApprovalResult(report, participants, reviewerId) {
 
   const reportData = JSON.parse(report.report_data);
   const totalAwarded = report.total_points * participants.length;
-  const memberTotals = participants.map(participant => {
-    const scoreResult = db.prepare(`
-      SELECT COALESCE(SUM(sl.points), 0) AS total
-      FROM score_ledger sl
-      INNER JOIN reports r ON r.id = sl.report_id
-      WHERE sl.user_id = ?
-        AND r.status = 'approved'
-    `).get(participant.user_id);
-
-    const newTotal = scoreResult.total;
+  const memberTotals = await Promise.all(participants.map(async participant => {
+    const newTotal = await aarDatabase.getMemberApprovedAarTotal(participant.user_id);
     const previousTotal = newTotal - report.total_points;
 
     return (
@@ -1764,15 +1760,15 @@ function buildAarApprovalResult(report, participants, reviewerId) {
       `${formatAarPoints(newTotal)} ` +
       `(+${formatAarPoints(report.total_points)} pts)`
     );
-  });
+  }));
 
   const approvalSummary = report.game_mode === 'PVP'
     ? (
-      `**Total points awarded to squad: ${formatAarPoints(totalAwarded)} AAR points.**\n` +
+      `**Total Saga Points awarded to squad: ${formatAarPoints(totalAwarded)}.**\n` +
       `Approved by: <@${reviewerId}>`
     )
     : (
-      `**${formatAarPoints(totalAwarded)} AAR points awarded ` +
+      `**${formatAarPoints(totalAwarded)} Saga points awarded ` +
       `to ${participants.length} Brother(s).**\n` +
       `Approved by: <@${reviewerId}>`
     );
@@ -1822,14 +1818,7 @@ function buildAarApprovalResult(report, participants, reviewerId) {
 
 async function recoverPendingAarReviewUpdates() {
 
-  const pendingUpdates = db.prepare(`
-    SELECT *
-    FROM reports
-    WHERE review_update_pending = 1
-      AND review_message_id IS NOT NULL
-      AND status IN ('approved', 'rejected')
-    ORDER BY id ASC
-  `).all();
+  const pendingUpdates = await aarDatabase.getPendingReviewUpdates();
 
   if (pendingUpdates.length === 0) return;
 
@@ -1870,28 +1859,20 @@ async function recoverPendingAarReviewUpdates() {
         throw new Error('Invalid evidence metadata.');
       }
 
-      const participants = db.prepare(`
-        SELECT user_id
-        FROM report_participants
-        WHERE report_id = ?
-      `).all(report.id);
+      const participants = await aarDatabase.getReportParticipants(report.id);
 
       if (participants.length === 0) {
         throw new Error('Report has no registered participants.');
       }
 
-      const audit = db.prepare(`
-        SELECT moderator_id, decision
-        FROM audit_log
-        WHERE report_id = ?
-      `).get(report.id);
+      const audit = await aarDatabase.getReportAudit(report.id);
 
       if (!audit || audit.decision !== report.status) {
         throw new Error('Matching moderation audit record not found.');
       }
 
       const reviewResult = report.status === 'approved'
-        ? buildAarApprovalResult(
+        ? await buildAarApprovalResult(
             report,
             participants,
             audit.moderator_id
@@ -1924,20 +1905,13 @@ async function recoverPendingAarReviewUpdates() {
         }
       });
 
-      const clearRecoveryMarker = db.prepare(`
-        UPDATE reports
-        SET review_update_pending = 0
-        WHERE id = ?
-          AND status = ?
-          AND review_message_id = ?
-          AND review_update_pending = 1
-      `).run(
+      const cleared = await aarDatabase.clearRecoveryMarker(
         report.id,
         report.status,
         report.review_message_id
       );
 
-      if (clearRecoveryMarker.changes !== 1) {
+      if (cleared !== 1) {
         throw new Error(
           'Discord card was repaired, but recovery marker could not be cleared.'
         );
@@ -1973,12 +1947,7 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     throw new Error('AAR review channel is unavailable.');
   }
 
-  const report = db.prepare(`
-    SELECT *
-    FROM reports
-    WHERE id = ?
-      AND status = 'pending'
-  `).get(reportId);
+  const report = await aarDatabase.getReportById(reportId, 'pending');
 
   if (!report) {
     throw new Error(`Pending AAR report #${reportId} was not found.`);
@@ -1988,11 +1957,7 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     throw new Error(`Submitter mismatch for AAR report #${reportId}.`);
   }
 
-  const participants = db.prepare(`
-    SELECT user_id
-    FROM report_participants
-    WHERE report_id = ?
-  `).all(reportId);
+  const participants = await aarDatabase.getReportParticipants(reportId);
 
   if (participants.length === 0) {
     throw new Error(`AAR report #${reportId} has no participants.`);
@@ -2005,18 +1970,6 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     participantIds: participants.map(participant => participant.user_id),
     evidence: evidenceNames
   });
-const botPermissions = reviewChannel.permissionsFor(client.user);
-
-console.log('[AAR Channel Upload Check]', {
-  channelId: reviewChannel.id,
-  canViewChannel: botPermissions?.has(PermissionFlagsBits.ViewChannel),
-  canSendMessages: botPermissions?.has(PermissionFlagsBits.SendMessages),
-  canAttachFiles: botPermissions?.has(PermissionFlagsBits.AttachFiles),
-  files: permanentFiles.map(file => ({
-    name: file.name,
-    size: file.attachment?.length
-  }))
-});
   const reviewMessage = await reviewChannel.send({
     flags: MessageFlags.IsComponentsV2,
     components: [container],
@@ -2025,46 +1978,16 @@ console.log('[AAR Channel Upload Check]', {
       parse: []
     }
   });
-console.log('[AAR Upload Debug]', {
-  outgoingFiles: permanentFiles.map(file => ({
-    name: file.name,
-    hasAttachment: Boolean(file.attachment)
-  })),
-  returnedMessageId: reviewMessage.id,
-  returnedAttachmentCount: reviewMessage.attachments.size
-});
-
 const fetchedReviewMessage = await reviewChannel.messages.fetch(
   reviewMessage.id
 );
 
-console.log('[AAR Fetched Message Debug]', {
-  fetchedAttachmentCount: fetchedReviewMessage.attachments.size,
-  fetchedAttachments: fetchedReviewMessage.attachments.map(file => file.name)
-});
-
-console.log('[AAR Gallery Raw Debug]', JSON.stringify(
-  reviewMessage.components
-    .flatMap(container => container.components || [])
-    .filter(component => component.type === 12)
-    .map(gallery => gallery.items),
-  null,
-  2
-));
-
- const galleryItems = reviewMessage.components
+ const galleryItems = fetchedReviewMessage.components
   .flatMap(container => container.components || [])
   .filter(component => component.type === 12)
   .flatMap(gallery => gallery.items || []);
 
 const evidence = galleryItems.map((item, index) => {
- console.log('[AAR Media Object Inspection]', {
-  mediaKeys: Object.keys(item.media || {}),
-  mediaObject: item.media,
-  attachmentId: item.media?.attachment_id,
-  mediaId: item.media?.id,
-  url: item.media?.url
-});
   const media = item.media?.data;
 
   return {
@@ -2075,14 +1998,6 @@ const evidence = galleryItems.map((item, index) => {
     contentType: media.content_type || null,
     type: 'original'
   };
-});
-
-console.log('[AAR Evidence Debug]', {
-  expectedCount: evidenceNames.length,
-  actualCount: evidence.length,
-  expectedNames: evidenceNames,
-  actualNames: evidence.map(file => file.name),
-  attachmentIds: evidence.map(file => file.id)
 });
 
 const attachmentsMatch = evidence.length === evidenceNames.length &&
@@ -2113,30 +2028,7 @@ const attachmentsMatch = evidence.length === evidenceNames.length &&
   }
 
   try {
-    const persistReviewMessage = db.transaction(() => {
-      const updateResult = db.prepare(`
-        UPDATE reports
-        SET
-          review_message_id = ?,
-          evidence = ?,
-          evidence_thread_id = NULL
-        WHERE id = ?
-          AND status = 'pending'
-          AND review_message_id IS NULL
-      `).run(
-        reviewMessage.id,
-        JSON.stringify(evidence),
-        reportId
-      );
-
-      if (updateResult.changes !== 1) {
-        throw new Error(
-          `Could not persist the review message association for report #${reportId}.`
-        );
-      }
-    });
-
-    persistReviewMessage();
+    await aarDatabase.attachReviewMessage(reportId, reviewMessage.id, evidence);
   } catch (persistError) {
     try {
       await reviewMessage.delete();
@@ -2208,11 +2100,7 @@ async function processReportReaction(reaction, user) {
       return;
     }
 
-    const mappedReport = db.prepare(`
-      SELECT *
-      FROM reports
-      WHERE review_message_id = ?
-    `).get(message.id);
+    const mappedReport = await aarDatabase.getReportByReviewMessage(message.id);
 
     let reportEmbed = null;
     let reportCategory;
@@ -2307,15 +2195,7 @@ async function processReportReaction(reaction, user) {
     // GET REPORT FROM DATABASE
     // ----------------------------------------
 
-    const report = mappedReport || db.prepare(`
-      SELECT *
-      FROM reports
-      WHERE id = ?
-        AND game_mode = ?
-    `).get(
-      reportId,
-      reportCategory
-    );
+    const report = mappedReport || await aarDatabase.getReportByIdAndMode(reportId, reportCategory);
 
     if (!report) {
       console.error(`Report #${reportId} not found in database.`);
@@ -2327,11 +2207,7 @@ async function processReportReaction(reaction, user) {
     // GET REPORT PARTICIPANTS
     // ----------------------------------------
 
-    const participants = db.prepare(`
-      SELECT user_id
-      FROM report_participants
-      WHERE report_id = ?
-    `).all(reportId);
+    const participants = await aarDatabase.getReportParticipants(reportId);
 
     if (participants.length === 0) {
       console.error(
@@ -2391,71 +2267,13 @@ async function processReportReaction(reaction, user) {
     // DATABASE TRANSACTION
     // ----------------------------------------
 
-    const saveDecision = db.transaction(() => {
-
-      // Update only if the report is still pending.
-      const updateResult = db.prepare(`
-        UPDATE reports
-SET
-  status = ?,
-  reviewed_at = CURRENT_TIMESTAMP,
-  review_update_pending = CASE
-    WHEN review_message_id IS NOT NULL THEN 1
-    ELSE 0
-  END
-WHERE id = ?
-  AND status = 'pending'
-      `).run(
-        decision,
-        reportId
-      );
-
-      // Prevent duplicate decisions.
-      if (updateResult.changes !== 1) {
-        return false;
-      }
-
-      // Award points only when approved.
-      if (decision === 'approved') {
-
-        const insertScore = db.prepare(`
-          INSERT INTO score_ledger (
-            report_id,
-            user_id,
-            points
-          )
-          VALUES (?, ?, ?)
-        `);
-
-        for (const participant of participants) {
-          insertScore.run(
-            reportId,
-            participant.user_id,
-            report.total_points
-          );
-        }
-      }
-
-      // Record the moderator's decision.
-      db.prepare(`
-        INSERT INTO audit_log (
-          report_id,
-          moderator_id,
-          decision,
-          reason
-        )
-        VALUES (?, ?, ?, ?)
-      `).run(
-        reportId,
-        user.id,
-        decision,
-        null
-      );
-
-      return true;
-    });
-
-    const decisionSaved = saveDecision();
+    const decisionSaved = await aarDatabase.saveAarDecision(
+      reportId,
+      decision,
+      user.id,
+      participants,
+      report.total_points
+    );
 
     if (!decisionSaved) {
 
@@ -2487,7 +2305,7 @@ WHERE id = ?
 
 
       const reviewResult = decision === 'approved'
-        ? buildAarApprovalResult(report, participants, user.id)
+        ? await buildAarApprovalResult(report, participants, user.id)
         : (
           `**Report rejected. No points awarded.**\n` +
           `Rejected by: <@${user.id}>`
@@ -2512,11 +2330,7 @@ WHERE id = ?
           }
         });
 
-        db.prepare(`
-          UPDATE reports
-          SET review_update_pending = 0
-          WHERE id = ?
-        `).run(reportId);
+        await aarDatabase.clearRecoveryMarker(reportId, decision);
 
       } catch (editError) {
         console.error(
@@ -2576,17 +2390,8 @@ WHERE id = ?
       const formatPoints = value =>
         Number(value.toFixed(2)).toString();
 
-      const memberTotals = participants.map(participant => {
-        const scoreResult = db.prepare(`
-            SELECT COALESCE(SUM(sl.points), 0) AS total
-            FROM score_ledger sl
-            INNER JOIN reports r
-            ON r.id = sl.report_id
-            WHERE sl.user_id = ?
-            AND r.status = 'approved'
-         `).get(participant.user_id);
-
-        const newTotal = scoreResult.total;
+      const memberTotals = await Promise.all(participants.map(async participant => {
+        const newTotal = await aarDatabase.getMemberApprovedAarTotal(participant.user_id);
 
         const previousTotal =
           newTotal - report.total_points;
@@ -2598,17 +2403,17 @@ WHERE id = ?
           `(+${formatPoints(report.total_points)} pts)`
         );
 
-      });
+      }));
 
       const approvalField = {
         name: 'AAR Approval',
         value: reportCategory === 'PVP'
           ? (
-            `**Total points awarded to squad: ${formatPoints(totalAwarded)} AAR points.**\n` +
+            `**Total Saga Points awarded to squad: ${formatPoints(totalAwarded)}.**\n` +
             `Approved by: <@${user.id}>`
           )
           : (
-            `**${formatPoints(totalAwarded)} AAR points awarded ` +
+            `**${formatPoints(totalAwarded)} Saga points awarded ` +
             `to ${participants.length} Brother(s).**\n` +
             `Approved by: <@${user.id}>`
           ),
@@ -2765,6 +2570,54 @@ WHERE id = ?
 // ORDEAL APPROVAL PROCESSING
 // ==========================================
 
+async function sendOrdealReviewAlert(client, title, description) {
+  const alertChannel = await client.channels.fetch(
+    process.env.NCO_REVIEW_CHANNEL_ID
+  );
+
+  if (
+    !alertChannel ||
+    !alertChannel.isTextBased() ||
+    !alertChannel.isSendable()
+  ) {
+    throw new Error('NCO review channel is unavailable for Ordeal discrepancy alerts.');
+  }
+
+  await alertChannel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle(title)
+        .setDescription(description)
+        .setTimestamp()
+    ],
+    allowedMentions: { parse: [] }
+  });
+}
+
+async function rollbackOrdealRewardRole(member, rewardRole, reason, submissionId) {
+  try {
+    await member.roles.remove(rewardRole, reason);
+  } catch (error) {
+    console.error(
+      `Could not roll back Ordeal reward role for submission #${submissionId} from ${member.id}:`,
+      error
+    );
+
+    try {
+      await sendOrdealReviewAlert(
+        member.client,
+        `Ordeal #${submissionId} Role Rollback Failed`,
+        `The review could not be finalized, and the bot could not remove the temporary reward role ${rewardRole.id} from <@${member.id}>. Please inspect and correct the member's role manually.`
+      );
+    } catch (alertError) {
+      console.error(
+        `Could not send the Ordeal role rollback alert for #${submissionId}:`,
+        alertError
+      );
+    }
+  }
+}
 
 async function processOrdealReaction(reaction, user) {
 
@@ -2803,11 +2656,7 @@ async function processOrdealReaction(reaction, user) {
       return;
     }
 
-    const mappedSubmission = db.prepare(`
-      SELECT id
-      FROM ordeal_submissions
-      WHERE review_message_id = ?
-    `).get(message.id);
+    const mappedSubmission = await ordealDatabase.getSubmissionByReviewMessage(message.id);
 
     let reviewEmbed = null;
 
@@ -2898,11 +2747,7 @@ async function processOrdealReaction(reaction, user) {
     // GET SUBMISSION
     // --------------------------------------
 
-    const submission = db.prepare(`
-      SELECT *
-      FROM ordeal_submissions
-      WHERE id = ?
-    `).get(submissionId);
+    const submission = await ordealDatabase.getSubmissionById(submissionId);
 
     if (!submission) {
       console.error(
@@ -3079,55 +2924,23 @@ async function processOrdealReaction(reaction, user) {
         // SAVE APPROVAL DECISION
         // ----------------------------------
 
-        const saveDecision = db.transaction(() => {
-
-          const result = db.prepare(`
-            UPDATE ordeal_submissions
-            SET
-              status = ?,
-              reviewed_by = ?,
-              reviewed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-              AND status = 'pending'
-          `).run(
-            decision,
-            user.id,
-            submissionId
-          );
-
-          if (result.changes !== 1) {
-            return false;
-          }
-
-          db.prepare(`
-            INSERT INTO ordeal_audit_log (
-              submission_id,
-              moderator_id,
-              decision
-            )
-            VALUES (?, ?, ?)
-          `).run(
-            submissionId,
-            user.id,
-            decision
-          );
-
-
-
-          return true;
-        });
-
-        const decisionSaved = saveDecision();
+        const decisionSaved = await ordealDatabase.saveDecision(
+          submissionId,
+          user.id,
+          decision
+        );
 
         if (!decisionSaved) {
 
           // Another reviewer finalized this submission.
           for (const member of newlyAssignedMembers) {
 
-            await member.roles.remove(
+            await rollbackOrdealRewardRole(
+              member,
               rewardRole,
-              'Ordeal was already reviewed'
-            ).catch(console.error);
+              'Ordeal was already reviewed',
+              submissionId
+            );
           }
 
           await message.reactions.removeAll().catch(() => { });
@@ -3139,10 +2952,12 @@ async function processOrdealReaction(reaction, user) {
         // Undo roles assigned during a failed approval.
         for (const member of newlyAssignedMembers) {
 
-          await member.roles.remove(
+          await rollbackOrdealRewardRole(
+            member,
             rewardRole,
-            'Ordeal approval could not be finalized'
-          ).catch(console.error);
+            'Ordeal approval could not be finalized',
+            submissionId
+          );
         }
 
         throw approvalError;
@@ -3154,43 +2969,11 @@ async function processOrdealReaction(reaction, user) {
       // SAVE REJECTION
       // ----------------------------------
 
-      const saveRejection = db.transaction(() => {
-
-        const result = db.prepare(`
-          UPDATE ordeal_submissions
-          SET
-            status = ?,
-            reviewed_by = ?,
-            reviewed_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-            AND status = 'pending'
-        `).run(
-          decision,
-          user.id,
-          submissionId
-        );
-
-        if (result.changes !== 1) {
-          return false;
-        }
-
-        db.prepare(`
-          INSERT INTO ordeal_audit_log (
-            submission_id,
-            moderator_id,
-            decision
-          )
-          VALUES (?, ?, ?)
-        `).run(
-          submissionId,
-          user.id,
-          decision
-        );
-
-        return true;
-      });
-
-      const decisionSaved = saveRejection();
+      const decisionSaved = await ordealDatabase.saveDecision(
+        submissionId,
+        user.id,
+        decision
+      );
 
       if (!decisionSaved) {
 
@@ -3208,12 +2991,12 @@ async function processOrdealReaction(reaction, user) {
         `**Challenge completion approved!**\n` +
         `Reward role: <@&${submission.reward_role_id}>\n` +
         `Role recipients: ${completerIds.map(id => `<@${id}>`).join(', ')}\n` +
-        `AAR points awarded: **0**\n` +
+        `Saga Points awarded: **0**\n` +
         `Approved by: <@${user.id}>`
       )
       : (
         `**Challenge submission rejected.**\n` +
-        `No reward role or AAR points were granted.\n` +
+        `No reward role or Saga Points were granted.\n` +
         `Rejected by: <@${user.id}>`
       );
 
@@ -3253,6 +3036,19 @@ async function processOrdealReaction(reaction, user) {
         `Could not update review card for Ordeal #${submissionId}. The database decision is already saved:`,
         editError
       );
+
+      try {
+        await sendOrdealReviewAlert(
+          client,
+          `Ordeal #${submissionId} Review Card Update Failed`,
+          `The database decision is already **${decision.toUpperCase()}**, but the original review card could not be updated.\n\nReview message: ${message.url}\nPlease inspect the submission record and repair the Discord card if needed.`
+        );
+      } catch (alertError) {
+        console.error(
+          `Could not send the Ordeal review-card discrepancy alert for #${submissionId}:`,
+          alertError
+        );
+      }
 
     }
     await message.reactions.removeAll().catch(console.error);
@@ -3310,7 +3106,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (focused.name === 'honor') {
           const search = focused.value.toLowerCase();
 
-          const matchingHonors = honor.getAllHonors()
+          const matchingHonors = (await honor.getAllHonors())
             .filter(item =>
               item.display_name.toLowerCase().includes(search) ||
               item.honor_id.toLowerCase().includes(search)
@@ -3347,7 +3143,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
           return;
         }
-        await interaction.deferReply();
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const subcommand = interaction.options.getSubcommand();
         const targetUser = interaction.options.getUser('member', true);
@@ -3372,9 +3168,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (!executor) {
-          await interaction.reply({
-            content: 'Could not verify your server permissions.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'Could not verify your server permissions.'
           });
           return;
         }
@@ -3394,10 +3189,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           );
 
         if (!canManageSagaPoints) {
-          await interaction.reply({
-            content:
-              'You need the Admin, NCO, or High Command role to manage Saga Points.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'You need the Admin, NCO, or High Command role to manage Saga Points.'
           });
           return;
         }
@@ -3407,9 +3200,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           requestedPoints <= 0 ||
           !reason
         ) {
-          await interaction.reply({
-            content: 'Please provide a valid amount and reason.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'Please provide a valid amount and reason.'
           });
           return;
         }
@@ -3432,9 +3224,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (!targetMember) {
-          await interaction.reply({
-            content: 'The selected member could not be found in this server.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'The selected member could not be found in this server.'
           });
           return;
         }
@@ -3443,100 +3234,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // CALCULATE CURRENT SAGA POINT BALANCE
         // --------------------------------------
 
-        const getCurrentSagaPoints = db.prepare(`
-          SELECT COALESCE(SUM(points), 0) AS total_points
-          FROM (
-            SELECT sl.points
-            FROM score_ledger sl
-            INNER JOIN reports r
-              ON r.id = sl.report_id
-            WHERE r.status = 'approved'
-              AND sl.user_id = ?
-
-            UNION ALL
-
-            SELECT tsl.points
-            FROM trial_score_ledger tsl
-            INNER JOIN trial_submissions ts
-              ON ts.id = tsl.submission_id
-            WHERE ts.status = 'approved'
-              AND tsl.user_id = ?
-
-            UNION ALL
-
-            SELECT spa.points_delta AS points
-            FROM saga_point_adjustments spa
-            WHERE spa.guild_id = ?
-              AND spa.user_id = ?
-          )
-        `);
-
-        // --------------------------------------
-        // RECORD ADJUSTMENT ATOMICALLY
-        // --------------------------------------
-
-        const applyAdjustment = db.transaction(() => {
-
-          const currentBalance = Math.max(
-            0,
-            Number(
-              getCurrentSagaPoints.get(
-                targetUser.id,
-                targetUser.id,
-                interaction.guild.id,
-                targetUser.id
-              ).total_points
-            )
-          );
-
-          const appliedPoints = subcommand === 'deduct'
-            ? Math.min(requestedPoints, currentBalance)
-            : requestedPoints;
-
-          const pointsDelta = subcommand === 'deduct'
-            ? -appliedPoints
-            : appliedPoints;
-
-          const result = db.prepare(`
-            INSERT INTO saga_point_adjustments (
-              guild_id,
-              user_id,
-              moderator_id,
-              action,
-              requested_points,
-              applied_points,
-              points_delta,
-              reason
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            interaction.guild.id,
-            targetUser.id,
-            interaction.user.id,
-            subcommand,
-            requestedPoints,
-            appliedPoints,
-            pointsDelta,
-            reason
-          );
-
-          const newBalance = Math.max(
-            0,
-            currentBalance + pointsDelta
-          );
-
-          return {
-            auditId: Number(result.lastInsertRowid),
-            currentBalance,
-            appliedPoints,
-            newBalance
-          };
-        });
-
         let adjustment;
 
         try {
-          adjustment = applyAdjustment();
+          adjustment = await sagaDatabase.applySagaAdjustment({
+            guildId: interaction.guild.id,
+            userId: targetUser.id,
+            moderatorId: interaction.user.id,
+            action: subcommand,
+            requestedPoints,
+            reason
+          });
         } catch (error) {
           console.error('Saga Point adjustment failed:', error);
 
@@ -3546,7 +3254,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
-        // --------------------------------------
+
         // REFRESH LEADERBOARD
         // --------------------------------------
 
@@ -3618,6 +3326,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
         const subcommand = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
 
@@ -3647,7 +3357,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!executor) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'Could not verify your server permissions.',
               flags: MessageFlags.Ephemeral
             });
@@ -3666,7 +3376,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             );
 
           if (!isHonorManager) {
-            await interaction.reply({
+            await interaction.editReply({
               content:
                 'You need Administrator, Admin, or AAR Moderator permissions to manage Honors.',
               flags: MessageFlags.Ephemeral
@@ -3683,10 +3393,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const selectedUser = interaction.options.getUser('member', true);
           const honorId = interaction.options.getString('honor', true);
 
-          const selectedHonor = honor.getHonorById(honorId);
+          const selectedHonor = await honor.getHonorById(honorId);
 
           if (!selectedHonor) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'Invalid Honor selection.',
               flags: MessageFlags.Ephemeral
             });
@@ -3702,21 +3412,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
             return;
           }
 
-          const result = honor.awardHonor(
+          const result = await honor.awardHonor(
             guildId,
             member.id,
             honorId,
             interaction.user.id
           );
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.success
               ? `**${selectedHonor.display_name}** has been awarded to <@${member.id}>.`
               : result.message,
@@ -3735,10 +3445,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const selectedUser = interaction.options.getUser('member', true);
           const honorId = interaction.options.getString('honor', true);
 
-          const selectedHonor = honor.getHonorById(honorId);
+          const selectedHonor = await honor.getHonorById(honorId);
 
           if (!selectedHonor) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'Invalid Honor selection.',
               flags: MessageFlags.Ephemeral
             });
@@ -3754,21 +3464,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
             return;
           }
 
-          const result = honor.removeHonor(
+          const result = await honor.removeHonor(
             guildId,
             member.id,
             honorId,
             interaction.user.id
           );
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.success
               ? `**${selectedHonor.display_name}** has been removed from <@${member.id}>.`
               : result.message,
@@ -3796,14 +3506,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
             return;
           }
 
-          const memberHonors = honor.getMemberHonors(
+          const memberHonors = await honor.getMemberHonors(
             guildId,
             member.id
           );
@@ -3814,7 +3524,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             ).join('\n')
             : 'This member has not earned any Honors yet.';
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `**Honors — ${member.displayName}**\n\n${description}`,
             flags: MessageFlags.Ephemeral,
             allowedMentions: { parse: [] }
@@ -3840,20 +3550,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!member) {
-            await interaction.reply({
+            await interaction.editReply({
               content: 'That member could not be found in this server.',
               flags: MessageFlags.Ephemeral
             });
             return;
           }
 
-          const history = honor.getMemberHonorHistory(
+          const history = await honor.getMemberHonorHistory(
             guildId,
             member.id
           );
 
           if (history.length === 0) {
-            await interaction.reply({
+            await interaction.editReply({
               content: `**Honor History — ${member.displayName}**\n\nNo Honor history found.`,
               flags: MessageFlags.Ephemeral
             });
@@ -3906,7 +3616,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             chunks.push(currentChunk);
           }
 
-          await interaction.reply({
+          await interaction.editReply({
             content: chunks[0],
             flags: MessageFlags.Ephemeral,
             allowedMentions: { parse: [] }
@@ -3931,9 +3641,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const honorId = interaction.options.getString('honor', true);
           const newName = interaction.options.getString('name', true);
 
-          const result = honor.renameHonor(honorId, newName);
+          const result = await honor.renameHonor(honorId, newName);
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.message,
             flags: MessageFlags.Ephemeral
           });
@@ -3948,12 +3658,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (subcommand === 'layout') {
           const layoutMode = interaction.options.getString('mode', true);
 
-          const result = honor.setHonorLayout(
+          const result = await honor.setHonorLayout(
             guildId,
             layoutMode
           );
 
-          await interaction.reply({
+          await interaction.editReply({
             content: result.message,
             flags: MessageFlags.Ephemeral
           });
@@ -4061,54 +3771,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .map(pack => pack.name)
           .join(', ') || 'No Pack Assigned';
 
-        const sagaPoints = db.prepare(`
-          SELECT COALESCE(SUM(points), 0) AS total_points
-          FROM (
-            -- Approved AAR reports
-            SELECT sl.points
-            FROM score_ledger sl
-            INNER JOIN reports r
-              ON r.id = sl.report_id
-            WHERE r.status = 'approved'
-              AND sl.user_id = ?
-
-            UNION ALL
-
-            -- Approved Unproven Trial submissions
-            SELECT tsl.points
-            FROM trial_score_ledger tsl
-            INNER JOIN trial_submissions ts
-              ON ts.id = tsl.submission_id
-            WHERE ts.status = 'approved'
-              AND tsl.user_id = ?
-
-            UNION ALL
-
-            -- Manual Saga Point adjustments
-            SELECT spa.points_delta AS points
-            FROM saga_point_adjustments spa
-            WHERE spa.guild_id = ?
-              AND spa.user_id = ?
-          )
-        `).get(
-          selectedUser.id,
-          selectedUser.id,
+        const sagaPoints = await sagaDatabase.getSagaPoints(
           interaction.guild.id,
           selectedUser.id
-        ).total_points;
+        );
 
         let geneSeedTotal = 0;
         let armouryDataTotal = 0;
 
-        const approvedRegularReports = db.prepare(`
-          SELECT r.report_data
-          FROM reports r
-          INNER JOIN report_participants rp
-            ON rp.report_id = r.id
-          WHERE rp.user_id = ?
-            AND r.status = 'approved'
-            AND r.game_mode IN ('Operations', 'Stratagems')
-        `).all(selectedUser.id);
+        const approvedRegularReports = await sagaDatabase.getApprovedRegularReports(
+          selectedUser.id
+        );
 
         for (const report of approvedRegularReports) {
           let reportData;
@@ -4141,11 +3814,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         }
 
-        const approvedOrdeals = db.prepare(`
-          SELECT participants, gene_seed, armoury_data
-          FROM ordeal_submissions
-          WHERE status = 'approved'
-        `).all();
+        const approvedOrdeals = await sagaDatabase.getApprovedOrdeals();
 
         for (const ordeal of approvedOrdeals) {
           let participants;
@@ -4178,11 +3847,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         let tenure = 'Unknown';
 
-        const tenureRecord = db.prepare(`
-            SELECT assigned_at
-            FROM iron_wolves_tenure
-            WHERE guild_id = ? AND user_id = ?
-       `).get(
+        const tenureRecord = await memberDatabase.getTenure(
           interaction.guild.id,
           member.id
         );
@@ -4207,7 +3872,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         }
 
-        const honorLayout = honor.getHonorDisplayLayout(
+        const honorLayout = await honor.getHonorDisplayLayout(
           interaction.guild.id,
           member.id
         );
@@ -4261,6 +3926,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
         const reportChannel = await interaction.guild.channels.fetch(
           process.env.REPORT_CHANNEL_ID
         );
@@ -4270,9 +3937,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           !reportChannel.isTextBased() ||
           !reportChannel.isSendable()
         ) {
-          await interaction.reply({
-            content: 'The configured AAR report channel is unavailable.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'The configured AAR report channel is unavailable.'
           });
 
           return;
@@ -4290,7 +3956,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             '🛡️ Siege\n' +
             '🏆 PVP\n' +
             '🐺 Ordeals\n\n' +
-            'All submitted reports require administrator or AAR Moderator approval before points are awarded.'
+            'All submitted reports require approval from a server Administrator, configured Admin, NCO, or AAR Moderator/High Command member before Saga Points are awarded.'
           )
           .setFooter({
             text: 'Space Marine 2 AAR System | Version 1.0'
@@ -4329,9 +3995,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           components: [firstRow]
         });
 
-        await interaction.reply({
-          content: `AAR panel posted successfully in ${reportChannel}.`,
-          flags: MessageFlags.Ephemeral
+        await interaction.editReply({
+          content: `AAR panel posted successfully in ${reportChannel}.`
         });
 
         return;
@@ -4437,7 +4102,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      pendingOrdealWorkflows.set(interaction.user.id, {
+      const ordealWorkflow = {
         challenge: selectedOrdeal,
         submitterId: interaction.user.id,
         completerIds: [],
@@ -4445,7 +4110,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         operation: null,
         geneSeed: null,
         armouryData: null
-      });
+      };
+
+      // Expire abandoned multi-step workflows so a closed ephemeral form
+      // cannot permanently block this member from starting another Ordeal.
+      ordealWorkflow.expirationTimer = setTimeout(() => {
+        if (pendingOrdealWorkflows.get(interaction.user.id) === ordealWorkflow) {
+          pendingOrdealWorkflows.delete(interaction.user.id);
+        }
+      }, 15 * 60 * 1000);
+      ordealWorkflow.expirationTimer.unref();
+
+      pendingOrdealWorkflows.set(interaction.user.id, ordealWorkflow);
 
       await interaction.reply({
         content:
@@ -4825,7 +4501,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const ordealDescriptions = activeOrdeals
           .map(ordeal =>
-            `• ${ordeal.name}: ${ordeal.gameMode} / ${ordeal.difficulty} / ${ordeal.basePoints} base points.`
+            `• ${ordeal.name}: ${ordeal.gameMode} / ${ordeal.difficulty}.`
           )
           .join('\n');
 
@@ -4852,7 +4528,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             `${ordealDescriptions}\n\n` +
             '**Rewards (after approval):**\n' +
             '• The designated Discord role/title for approved challenge completers.\n\n' +
-            '**Ordeals award zero AAR points and do not affect the leaderboard.**\n' +
+            '**Ordeals award zero Saga Points and do not affect the leaderboard.**\n' +
             'Only actual challenge completers receive the special Discord role.',
           components: [selectRow],
           flags: MessageFlags.Ephemeral
@@ -5094,9 +4770,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const selectedAdditionalParticipants = interaction.fields
         .getSelectedUsers('ordeal_additional_participants');
+      const selectedAdditionalUsers = [
+        ...(selectedAdditionalParticipants?.values() || [])
+      ];
       const selectedAdditionalIds = [
         ...new Set(selectedAdditionalParticipants?.keys() || [])
       ];
+
+      if (selectedAdditionalUsers.some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as Ordeal participants.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
 
       const completerIdSet = new Set(completerIds);
       const additionalParticipantIds = selectedAdditionalIds;
@@ -5233,25 +4920,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      // Acknowledge before querying Turso so database latency cannot
+      // exceed Discord's initial interaction response deadline.
+      await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+      });
+
+      if (!interaction.guild) {
+        await interaction.editReply({
+          content: 'Ordeal submissions must be made inside the server.'
+        });
+        pendingOrdealWorkflows.delete(interaction.user.id);
+        return;
+      }
+
+      const participantMembers = await Promise.all(
+        participants.map(userId => interaction.guild.members.fetch(userId))
+      );
+      if (participantMembers.some(member => member.user.bot)) {
+        await interaction.editReply({
+          content: 'Bots cannot be selected as Ordeal participants or challenge completers.'
+        });
+        pendingOrdealWorkflows.delete(interaction.user.id);
+        return;
+      }
+
       // ----------------------------------
       // CHECK PREVIOUS SUBMISSIONS
       // ----------------------------------
 
-      const previousRows = db.prepare(`
-    SELECT
-      id,
-      challenge_name,
-      game_mode,
-      difficulty,
-      challenge_completers,
-      participants,
-      operation_name,
-      review_message_id
-      FROM ordeal_submissions
-      WHERE challenge_key = ?
-      AND status IN ('pending', 'approved')
-    ORDER BY id DESC
-  `).all(ordeal.key);
+      const previousRows = await ordealDatabase.getPreviousSubmissions(ordeal.key);
 
       let suspiciousMatch = null;
 
@@ -5354,10 +5052,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         processingOrdealSubmissions.add(interaction.user.id);
 
-        await interaction.deferReply({
-          flags: MessageFlags.Ephemeral
-        });
-
         // ----------------------------------
         // CHECK REVIEW CHANNEL
         // ----------------------------------
@@ -5378,52 +5072,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // SAVE COMPLETE SUBMISSION
         // ----------------------------------
 
-        const saveSubmission = db.transaction(() => {
-
-          const result = db.prepare(`
-        INSERT INTO ordeal_submissions (
-          submitter_id,
-          challenge_key,
-          challenge_name,
-          game_mode,
+        submissionId = await ordealDatabase.createSubmission({
+          submitterId: interaction.user.id,
+          challengeKey: ordeal.key,
+          challengeName: ordeal.name,
+          gameMode,
           difficulty,
-          reward_role_id,
-          operation_name,
-          challenge_completers,
+          rewardRoleId: ordeal.rewardRoleId,
+          operationName,
+          completers: completerIds,
           participants,
-          gene_seed,
-          armoury_data,
-          base_points,
-          bonus_points,
-          total_points,
-          suspicious_flag,
-          suspicious_details,
-          status
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-      `).run(
-            interaction.user.id,
-            ordeal.key,
-            ordeal.name,
-            gameMode,
-            difficulty,
-            ordeal.rewardRoleId,
-            operationName,
-            JSON.stringify(completerIds),
-            JSON.stringify(participants),
-            geneSeed,
-            armouryData,
-            0,
-            0,
-            0,
-            suspiciousFlag,
-            JSON.stringify(suspiciousDetails)
-          );
-
-          return Number(result.lastInsertRowid);
+          geneSeed,
+          armouryData,
+          suspiciousFlag,
+          suspiciousDetails
         });
-
-        submissionId = saveSubmission();
 
         // ----------------------------------
         // DOWNLOAD EVIDENCE FILES
@@ -5432,23 +5095,47 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 
         const permanentFiles = [];
+        const usedEvidenceNames = new Set();
 
         for (const file of uploadedFiles.values()) {
 
-          const response = await fetch(file.url);
+          const maxFileBytes = 10 * 1024 * 1024;
+          if (
+            !Number.isSafeInteger(file.size) ||
+            file.size <= 0 ||
+            file.size > maxFileBytes
+          ) {
+            throw new Error(`Ordeal evidence file "${file.name}" must be between 1 byte and 10 MB.`);
+          }
+
+          const response = await fetch(file.url, {
+            signal: AbortSignal.timeout(30_000)
+          });
 
           if (!response.ok) {
             throw new Error(`Could not download ${file.name}`);
           }
 
+          const contentLength = Number(response.headers.get('content-length'));
+          if (Number.isFinite(contentLength) && contentLength > maxFileBytes) {
+            throw new Error(`Ordeal evidence file "${file.name}" exceeds the 10 MB limit.`);
+          }
+
           const buffer = Buffer.from(
             await response.arrayBuffer()
           );
+          if (buffer.length > maxFileBytes) {
+            throw new Error(`Ordeal evidence file "${file.name}" exceeds the 10 MB limit.`);
+          }
 
+          const safeEvidenceName = getUniqueAarEvidenceName(
+            file.name,
+            usedEvidenceNames
+          );
 
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
-              name: file.name
+              name: safeEvidenceName
             })
           );
         }
@@ -5508,15 +5195,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             parse: []
           }
         });
-db.prepare(`
-  UPDATE ordeal_submissions
-  SET review_message_id = ?
-  WHERE id = ?
-    AND status = 'pending'
-`).run(
-          reviewMessage.id,
-          submissionId
-        );
+await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
 
         // ----------------------------------
@@ -5556,17 +5235,7 @@ db.prepare(`
             type: 'original'
           };
         });
-        db.prepare(`
-  UPDATE ordeal_submissions
-  SET
-    evidence = ?,
-    evidence_thread_id = NULL
-  WHERE id = ?
-    AND status = 'pending'
-`).run(
-          JSON.stringify(evidence),
-          submissionId
-        );
+        await ordealDatabase.saveEvidence(submissionId, evidence);
 
 
         // ----------------------------------
@@ -5606,13 +5275,9 @@ db.prepare(`
           try {
 
             // Check whether an alert was already recorded.
-            const existingAlert = db.prepare(`
-          SELECT nco_alert_message_id
-          FROM ordeal_submissions
-          WHERE id = ?
-        `).get(submissionId);
+            const existingAlertMessageId = await ordealDatabase.getNcoAlertMessageId(submissionId);
 
-            if (!existingAlert?.nco_alert_message_id) {
+            if (!existingAlertMessageId) {
 
               const ncoChannel = await client.channels.fetch(
                 process.env.NCO_REVIEW_CHANNEL_ID
@@ -5758,15 +5423,7 @@ db.prepare(`
                 }
               });
 
-              db.prepare(`
-            UPDATE ordeal_submissions
-            SET nco_alert_message_id = ?
-            WHERE id = ?
-              AND nco_alert_message_id IS NULL
-          `).run(
-                alertMessage.id,
-                submissionId
-              );
+              await ordealDatabase.attachNcoAlertMessage(submissionId, alertMessage.id);
             }
 
           } catch (alertError) {
@@ -5789,7 +5446,7 @@ db.prepare(`
         await interaction.editReply({
           content:
             `Your **${ordeal.name}** completion has been submitted successfully!\n\n` +
-            `**AAR Points:** 0\n` +
+            `**Saga Points:** 0\n` +
             `**Participants:** ${participants.length}\n` +
             `**Challenge completers:** ${completerIds.length}\n\n` +
             'Your challenge reward role will be processed after Admin, NCO, or High Command review.'
@@ -5804,6 +5461,8 @@ db.prepare(`
         console.error('Ordeal submission error:', error);
 
         if (!submissionFinalized) {
+          const cleanupIssues = [];
+
           if (
             !reviewMessage &&
             reviewMessageCreationAttempted &&
@@ -5816,9 +5475,13 @@ db.prepare(`
               });
               reviewMessage = recentMessages.find(message =>
                 message.author?.id === client.user.id &&
-                message.embeds.some(embed =>
-                  embed.title === `Ordeal Completion #${submissionId}`
-                )
+                message.components
+                  .flatMap(container => container.components || [])
+                  .some(component =>
+                    component.type === 10 &&
+                    typeof component.content === 'string' &&
+                    component.content.includes(`Ordeal #${submissionId}`)
+                  )
               ) || null;
             } catch (cleanupError) {
               console.error(
@@ -5839,20 +5502,42 @@ db.prepare(`
                 `Could not delete incomplete review message for Ordeal #${submissionId}:`,
                 cleanupError
               );
+              cleanupIssues.push(
+                `Could not delete incomplete review message ${reviewMessage.url}.`
+              );
             }
           }
 
           if (submissionId !== null) {
             try {
-              db.prepare(`
-            DELETE FROM ordeal_submissions
-            WHERE id = ?
-              AND status = 'pending'
-          `).run(submissionId);
+              const removed = await ordealDatabase.deletePendingSubmission(submissionId);
+              if (!removed) {
+                cleanupIssues.push(
+                  `Ordeal submission #${submissionId} was not removed as pending; inspect its current status.`
+                );
+              }
             } catch (cleanupError) {
               console.error(
                 `Could not remove incomplete Ordeal database row #${submissionId}:`,
                 cleanupError
+              );
+              cleanupIssues.push(
+                `Could not remove pending Ordeal database row #${submissionId}.`
+              );
+            }
+          }
+
+          if (cleanupIssues.length > 0) {
+            try {
+              await sendOrdealReviewAlert(
+                client,
+                `Ordeal #${submissionId || 'Unknown'} Submission Cleanup Needs Attention`,
+                cleanupIssues.join('\n')
+              );
+            } catch (alertError) {
+              console.error(
+                `Could not send Ordeal submission cleanup alert for #${submissionId}:`,
+                alertError
               );
             }
           }
@@ -5914,13 +5599,17 @@ db.prepare(`
 
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_squad');
+      const selectedSquadUsers = [
+        ...(selectedSquad?.values() || [])
+      ];
       const selectedUserIds = [
         ...(selectedSquad?.keys() || [])
       ];
 
       if (
         selectedUserIds.length > 2 ||
-        selectedUserIds.some(id => typeof id !== 'string')
+        selectedUserIds.some(id => typeof id !== 'string') ||
+        selectedSquadUsers.some(user => user.bot)
       ) {
         deleteOperationsWorkflow(interaction.user.id, difficulty);
         await interaction.reply({
@@ -6039,49 +5728,18 @@ db.prepare(`
         armouryData
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'Operations',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
-      });
-
-      const reportId = saveReport();
-
-      // Acknowledge Discord before processing uploads.
       await interaction.deferReply({
         flags: MessageFlags.Ephemeral
+      });
+
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'Operations',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
 
       // ====================================
@@ -6111,11 +5769,24 @@ db.prepare(`
 
         console.error('Evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending Operations report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your Operations report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your Operations report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -6173,6 +5844,14 @@ db.prepare(`
 
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_stratagems_squad');
+
+      if ([...(selectedSquad?.values() || [])].some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as squad members.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
 
       const selectedTeammateIds = [
         ...(selectedSquad?.keys() || [])
@@ -6246,49 +5925,18 @@ db.prepare(`
         armouryData
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'Stratagems',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
-      });
-
-      const reportId = saveReport();
-
-      // Acknowledge Discord before processing uploads.
       await interaction.deferReply({
         flags: MessageFlags.Ephemeral
+      });
+
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'Stratagems',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
 
       // ====================================
@@ -6314,11 +5962,24 @@ db.prepare(`
 
         console.error('Stratagems evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending Stratagems report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your Stratagems report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your Stratagems report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -6362,6 +6023,14 @@ db.prepare(`
 
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_pvp_squad');
+
+      if ([...(selectedSquad?.values() || [])].some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as squad members.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
 
       const selectedTeammateIds = [
         ...new Set(
@@ -6424,48 +6093,18 @@ db.prepare(`
         result
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'PVP',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
-      });
-
-      const reportId = saveReport();
-
       await interaction.deferReply({
         flags: MessageFlags.Ephemeral
+      });
+
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'PVP',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
 
       try {
@@ -6487,11 +6126,24 @@ db.prepare(`
 
         console.error('PVP evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending PVP report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your PVP report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your PVP report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -6570,6 +6222,14 @@ db.prepare(`
       const selectedSquad = interaction.fields
         .getSelectedUsers('aar_siege_squad');
 
+      if ([...(selectedSquad?.values() || [])].some(user => user.bot)) {
+        await interaction.reply({
+          content: 'Bots cannot be selected as squad members.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
       const selectedTeammateIds = [
         ...(selectedSquad?.keys() || [])
       ]
@@ -6633,49 +6293,18 @@ db.prepare(`
         waves
       };
 
-      const saveReport = db.transaction(() => {
-
-        const reportResult = db.prepare(`
-          INSERT INTO reports (
-            submitter_id,
-            game_mode,
-            report_data,
-            base_points,
-            bonus_points,
-            total_points
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          interaction.user.id,
-          'Siege',
-          JSON.stringify(reportData),
-          basePoints,
-          bonusPoints,
-          totalPoints
-        );
-
-        const reportId = Number(reportResult.lastInsertRowid);
-
-        const insertParticipant = db.prepare(`
-          INSERT INTO report_participants (
-            report_id,
-            user_id
-          )
-          VALUES (?, ?)
-        `);
-
-        for (const userId of participants) {
-          insertParticipant.run(reportId, userId);
-        }
-
-        return reportId;
-      });
-
-      const reportId = saveReport();
-
-      // Acknowledge Discord before processing uploads.
       await interaction.deferReply({
         flags: MessageFlags.Ephemeral
+      });
+
+      const reportId = await aarDatabase.createAarReport({
+        submitterId: interaction.user.id,
+        gameMode: 'Siege',
+        reportData,
+        basePoints,
+        bonusPoints,
+        totalPoints,
+        participants: [...participants]
       });
 
       // ====================================
@@ -6701,11 +6330,24 @@ db.prepare(`
 
         console.error('Siege evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending Siege report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your Siege report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your Siege report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -6716,15 +6358,17 @@ db.prepare(`
 
     console.error('Interaction error:', error);
 
-    if (
-      interaction.isRepliable() &&
-      !interaction.replied &&
-      !interaction.deferred
-    ) {
-      await interaction.reply({
-        content: 'An error occurred while processing your request.',
-        flags: MessageFlags.Ephemeral
-      }).catch(console.error);
+    if (interaction.isRepliable()) {
+      if (interaction.deferred) {
+        await interaction.editReply({
+          content: 'An error occurred while processing your request.'
+        }).catch(console.error);
+      } else if (!interaction.replied) {
+        await interaction.reply({
+          content: 'An error occurred while processing your request.',
+          flags: MessageFlags.Ephemeral
+        }).catch(console.error);
+      }
     }
   }
 });
@@ -6751,6 +6395,9 @@ async function checkVeteranPromotion() {
 
       for (const member of members.values()) {
         if (member.user.bot) continue;
+
+        // Veteran promotion applies only to Iron Wolves members.
+        if (!member.roles.cache.has(process.env.IRON_WOLVES_ROLE_ID)) continue;
 
         // Skip members who already have Veteran.
         if (member.roles.cache.has(VETERAN_ROLE_ID)) continue;
@@ -6781,8 +6428,122 @@ async function checkVeteranPromotion() {
 // CONNECT TO DISCORD
 // ==========================================
 
-client.login(process.env.DISCORD_TOKEN)
-  .catch((error) => {
-    console.error('Failed to connect to Discord:', error);
-    process.exitCode = 1;
+async function startServitor() {
+  // Fail fast when a required runtime destination is missing. Otherwise the
+  // bot could appear online while submissions or leaderboard updates cannot work.
+  const requiredRuntimeVariables = [
+    'DISCORD_TOKEN',
+    'REPORT_CHANNEL_ID',
+    'REVIEW_CHANNEL_ID',
+    'ORDEAL_REVIEW_CHANNEL_ID',
+    'NCO_REVIEW_CHANNEL_ID',
+    'LEADERBOARD_CHANNEL_ID',
+    'TRIAL_PANEL_CHANNEL_ID',
+    'TRIAL_REVIEW_CHANNEL_ID',
+    'ADMIN_ROLE_ID',
+    'NCO_ROLE_ID',
+    'MODERATOR_ROLE_ID',
+    'UNPROVEN_ROLE_ID',
+    'IRON_WOLVES_ROLE_ID'
+  ];
+  const missingRuntimeVariables = requiredRuntimeVariables.filter(
+    variable => !process.env[variable] || !process.env[variable].trim()
+  );
+  if (missingRuntimeVariables.length > 0) {
+    throw new Error(
+      `Missing required runtime configuration: ${missingRuntimeVariables.join(', ')}`
+    );
+  }
+
+  // Database readiness is a hard startup prerequisite. Do not accept Discord
+  // interactions until every feature schema is available.
+  await database.initializeDatabase();
+  await initializeCoreSchema();
+  await initializeTrialSchema();
+  await initializeHonorSchema();
+  databaseReady = true;
+
+  await client.login(process.env.DISCORD_TOKEN);
+}
+
+async function closeKeepAliveServer() {
+  if (!keep_alive.listening) return;
+
+  await new Promise((resolve, reject) => {
+    keep_alive.close(error => {
+      if (error) reject(error);
+      else resolve();
+    });
   });
+}
+
+function shutdownServitor(signal) {
+  if (shutdownPromise) return shutdownPromise;
+
+  shutdownPromise = (async () => {
+    console.log(`Received ${signal}; shutting down Servitor...`);
+
+    // Stop reporting ready before any shutdown work begins.
+    shuttingDown = true;
+    databaseReady = false;
+
+    if (aarRecoveryInterval) clearInterval(aarRecoveryInterval);
+    if (veteranPromotionInterval) clearInterval(veteranPromotionInterval);
+
+    const shutdownErrors = [];
+
+    try {
+      await client.destroy();
+    } catch (error) {
+      shutdownErrors.push(error);
+      console.error('Discord client shutdown failed:', error);
+    }
+
+    try {
+      await database.closeDatabase();
+    } catch (error) {
+      shutdownErrors.push(error);
+      console.error('Database shutdown failed:', error);
+    }
+
+    try {
+      await closeKeepAliveServer();
+    } catch (error) {
+      shutdownErrors.push(error);
+      console.error('Health-check server shutdown failed:', error);
+    }
+
+    process.exitCode = shutdownErrors.length > 0 ? 1 : 0;
+    console.log('Servitor shutdown complete.');
+  })();
+
+  return shutdownPromise;
+}
+
+process.once('SIGINT', () => {
+  void shutdownServitor('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+  void shutdownServitor('SIGTERM');
+});
+
+startServitor().catch(async error => {
+  console.error('Servitor startup failed:', error);
+  try {
+    await client.destroy();
+  } catch (closeError) {
+    console.error('Discord client shutdown after startup failure also failed:', closeError);
+  }
+  try {
+    await database.closeDatabase();
+  } catch (closeError) {
+    console.error('Database shutdown after startup failure also failed:', closeError);
+  }
+  try {
+    await closeKeepAliveServer();
+  } catch (closeError) {
+    console.error('Health-check server shutdown after startup failure also failed:', closeError);
+  }
+  process.exitCode = 1;
+});
