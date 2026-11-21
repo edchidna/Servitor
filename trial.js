@@ -929,8 +929,9 @@ async function processTrialReviewDecision(interaction) {
 
     try {
         if (!interaction.guild) {
-            await interaction.editReply({
-                content: 'Trial reviews can only be performed inside the server.'
+            await interaction.reply({
+                content: 'Trial reviews can only be performed inside the server.',
+                ephemeral: true
             });
             return true;
         }
