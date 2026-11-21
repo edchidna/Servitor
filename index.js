@@ -2621,6 +2621,30 @@ async function sendOrdealReviewAlert(client, title, description) {
   });
 }
 
+async function rollbackOrdealRewardRole(member, rewardRole, reason, submissionId) {
+  try {
+    await member.roles.remove(rewardRole, reason);
+  } catch (error) {
+    console.error(
+      `Could not roll back Ordeal reward role for submission #${submissionId} from ${member.id}:`,
+      error
+    );
+
+    try {
+      await sendOrdealReviewAlert(
+        member.client,
+        `Ordeal #${submissionId} Role Rollback Failed`,
+        `The review could not be finalized, and the bot could not remove the temporary reward role ${rewardRole.id} from <@${member.id}>. Please inspect and correct the member's role manually.`
+      );
+    } catch (alertError) {
+      console.error(
+        `Could not send the Ordeal role rollback alert for #${submissionId}:`,
+        alertError
+      );
+    }
+  }
+}
+
 async function processOrdealReaction(reaction, user) {
 
   if (user.bot) return;
@@ -2937,10 +2961,12 @@ async function processOrdealReaction(reaction, user) {
           // Another reviewer finalized this submission.
           for (const member of newlyAssignedMembers) {
 
-            await member.roles.remove(
+            await rollbackOrdealRewardRole(
+              member,
               rewardRole,
-              'Ordeal was already reviewed'
-            ).catch(console.error);
+              'Ordeal was already reviewed',
+              submissionId
+            );
           }
 
           await message.reactions.removeAll().catch(() => { });
@@ -2952,10 +2978,12 @@ async function processOrdealReaction(reaction, user) {
         // Undo roles assigned during a failed approval.
         for (const member of newlyAssignedMembers) {
 
-          await member.roles.remove(
+          await rollbackOrdealRewardRole(
+            member,
             rewardRole,
-            'Ordeal approval could not be finalized'
-          ).catch(console.error);
+            'Ordeal approval could not be finalized',
+            submissionId
+          );
         }
 
         throw approvalError;
