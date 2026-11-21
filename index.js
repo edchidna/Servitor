@@ -1984,28 +1984,12 @@ console.log('[AAR Fetched Message Debug]', {
   fetchedAttachments: fetchedReviewMessage.attachments.map(file => file.name)
 });
 
-console.log('[AAR Gallery Raw Debug]', JSON.stringify(
-  fetchedReviewMessage.components
-    .flatMap(container => container.components || [])
-    .filter(component => component.type === 12)
-    .map(gallery => gallery.items),
-  null,
-  2
-));
-
  const galleryItems = fetchedReviewMessage.components
   .flatMap(container => container.components || [])
   .filter(component => component.type === 12)
   .flatMap(gallery => gallery.items || []);
 
 const evidence = galleryItems.map((item, index) => {
- console.log('[AAR Media Object Inspection]', {
-  mediaKeys: Object.keys(item.media || {}),
-  mediaObject: item.media,
-  attachmentId: item.media?.attachment_id,
-  mediaId: item.media?.id,
-  url: item.media?.url
-});
   const media = item.media?.data;
 
   return {
