@@ -1460,13 +1460,32 @@ async function prepareAarEvidenceFiles(uploadedFiles) {
 
   for (const file of uploadedFileList) {
 
-    const response = await fetch(file.url);
+    const maxFileBytes = 10 * 1024 * 1024;
+    if (
+      !Number.isSafeInteger(file.size) ||
+      file.size <= 0 ||
+      file.size > maxFileBytes
+    ) {
+      throw new Error(`AAR evidence file "${file.name}" must be between 1 byte and 10 MB.`);
+    }
+
+    const response = await fetch(file.url, {
+      signal: AbortSignal.timeout(30_000)
+    });
 
     if (!response.ok) {
       throw new Error(`Could not download ${file.name}`);
     }
 
+    const contentLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > maxFileBytes) {
+      throw new Error(`AAR evidence file "${file.name}" exceeds the 10 MB limit.`);
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxFileBytes) {
+      throw new Error(`AAR evidence file "${file.name}" exceeds the 10 MB limit.`);
+    }
 
     const name = getUniqueAarEvidenceName(
       file.name,
@@ -5081,16 +5100,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         for (const file of uploadedFiles.values()) {
 
-          const response = await fetch(file.url);
+          const maxFileBytes = 10 * 1024 * 1024;
+          if (
+            !Number.isSafeInteger(file.size) ||
+            file.size <= 0 ||
+            file.size > maxFileBytes
+          ) {
+            throw new Error(`Ordeal evidence file "${file.name}" must be between 1 byte and 10 MB.`);
+          }
+
+          const response = await fetch(file.url, {
+            signal: AbortSignal.timeout(30_000)
+          });
 
           if (!response.ok) {
             throw new Error(`Could not download ${file.name}`);
           }
 
+          const contentLength = Number(response.headers.get('content-length'));
+          if (Number.isFinite(contentLength) && contentLength > maxFileBytes) {
+            throw new Error(`Ordeal evidence file "${file.name}" exceeds the 10 MB limit.`);
+          }
+
           const buffer = Buffer.from(
             await response.arrayBuffer()
           );
-
+          if (buffer.length > maxFileBytes) {
+            throw new Error(`Ordeal evidence file "${file.name}" exceeds the 10 MB limit.`);
+          }
 
           permanentFiles.push(
             new AttachmentBuilder(buffer, {
