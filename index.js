@@ -6436,7 +6436,15 @@ async function startServitor() {
     'REPORT_CHANNEL_ID',
     'REVIEW_CHANNEL_ID',
     'ORDEAL_REVIEW_CHANNEL_ID',
-    'LEADERBOARD_CHANNEL_ID'
+    'NCO_REVIEW_CHANNEL_ID',
+    'LEADERBOARD_CHANNEL_ID',
+    'TRIAL_PANEL_CHANNEL_ID',
+    'TRIAL_REVIEW_CHANNEL_ID',
+    'ADMIN_ROLE_ID',
+    'NCO_ROLE_ID',
+    'MODERATOR_ROLE_ID',
+    'UNPROVEN_ROLE_ID',
+    'IRON_WOLVES_ROLE_ID'
   ];
   const missingRuntimeVariables = requiredRuntimeVariables.filter(
     variable => !process.env[variable] || !process.env[variable].trim()
