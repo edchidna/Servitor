@@ -993,6 +993,22 @@ async function processTrialReviewDecision(interaction) {
             return true;
         }
 
+        // A reviewer must not approve or reject their own submission or a
+        // submission in which they participated as a Trial Completer or Pack Member.
+        const isSubmitter = submission.submitter_id === interaction.user.id;
+        const isParticipant = [
+            ...submission.completers,
+            ...submission.pack_members
+        ].some(member => member.user_id === interaction.user.id);
+
+        if (isSubmitter || isParticipant) {
+            await interaction.reply({
+                content: 'You cannot review a Trial submission that you submitted or participated in.',
+                ephemeral: true
+            });
+            return true;
+        }
+
         await interaction.deferReply({ ephemeral: true });
 
         // Check Pack Members' current Unproven role status at review time.
