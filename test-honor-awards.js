@@ -173,7 +173,7 @@ async function main() {
   assert.equal(layout.leftColumn[1].count,2);
   assert.equal(layout.leftColumn[2].honor_id,'honor_1','third distinct Honor should occupy next slot');
 
-  console.log('Honor award logic tests passed: repeat awards, counts, one-copy revoke, retained history, rename, fixed and sequential layout.');
+  console.log('Honor award logic regression tests passed: repeat awards, counts, one-copy revoke, retained history, rename, fixed and sequential layout.');
   console.log('Discord connection: none. Real database: none. Live data: none.');
 }
 
