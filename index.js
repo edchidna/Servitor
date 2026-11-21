@@ -3433,13 +3433,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
               description: metadata.description || 'An Honor has been bestowed upon a warrior.',
               color: 0xC6A664,
               fields: [
-                { name: 'Recipient', value: `<@\${member.id}>`, inline: true },
+                { name: 'Recipient', value: `<@${member.id}>`, inline: true },
                 { name: 'Total Honor', value: `×${result.count}`, inline: true }
               ],
               timestamp: new Date().toISOString()
             };
             const announcementPayload = {
-              content: `🐺 Honor bestowed upon <@\${member.id}>!`,
+              content: `🐺 Honor bestowed upon <@${member.id}>!`,
               embeds: [embed],
               allowedMentions: { users: [member.id] }
             };
@@ -3460,7 +3460,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             } catch (announcementError) {
               console.error('Honor was awarded but public announcement failed:', announcementError);
               await interaction.editReply({
-                content: `Honor saved for <@\${member.id}>, but the public announcement failed to send. Do not award it again.`,
+                content: `Honor saved for <@${member.id}>, but the public announcement failed to send. Do not award it again.`,
                 flags: MessageFlags.Ephemeral,
                 allowedMentions: { parse: [] }
               });
