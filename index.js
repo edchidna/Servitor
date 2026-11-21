@@ -5625,11 +5625,24 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
         console.error('Evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending Operations report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your Operations report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your Operations report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -5797,11 +5810,24 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
         console.error('Stratagems evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending Stratagems report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your Stratagems report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your Stratagems report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -5940,11 +5966,24 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
         console.error('PVP evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending PVP report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your PVP report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your PVP report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
@@ -6123,11 +6162,24 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
         console.error('Siege evidence archive error:', uploadError);
 
+        let incompleteReportRemoved = false;
+
+        try {
+          incompleteReportRemoved = await aarDatabase.deleteUnlinkedPendingReport(reportId);
+        } catch (cleanupError) {
+          console.error(
+            `Could not remove unlinked pending Siege report #${reportId}:`,
+            cleanupError
+          );
+        }
+
         await interaction.editReply({
           content:
-            `Your Siege report #${reportId} was saved, but the review message, evidence, or reactions could not be completed.\n\n` +
-            `${uploadError.message}\n\n` +
-            'Please contact an AAR Moderator. The report remains pending and no points have been awarded.'
+            `Your Siege report #${reportId} could not be fully archived.\n\n` +
+            (incompleteReportRemoved
+              ? 'The incomplete pending report was removed. Please submit again.'
+              : 'The report remains pending for moderator recovery. Please contact an AAR Moderator.') +
+            `\n\n${uploadError.message}`
         });
       }
 
