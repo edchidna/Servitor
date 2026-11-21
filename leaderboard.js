@@ -56,7 +56,20 @@ function createLeaderboardEmbed(scores) {
     .setTimestamp();
 }
 
+let leaderboardRefreshPromise = null;
+
 async function refreshLeaderboard(client) {
+  if (leaderboardRefreshPromise) return leaderboardRefreshPromise;
+
+  leaderboardRefreshPromise = refreshLeaderboardInternal(client);
+  try {
+    return await leaderboardRefreshPromise;
+  } finally {
+    leaderboardRefreshPromise = null;
+  }
+}
+
+async function refreshLeaderboardInternal(client) {
   const channelId = process.env.LEADERBOARD_CHANNEL_ID;
   if (!channelId) throw new Error('LEADERBOARD_CHANNEL_ID is missing from .env');
   const channel = await client.channels.fetch(channelId);
