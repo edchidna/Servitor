@@ -1946,18 +1946,6 @@ async function createAarReviewMessage(reportId, submitterId, uploadedFiles) {
     participantIds: participants.map(participant => participant.user_id),
     evidence: evidenceNames
   });
-const botPermissions = reviewChannel.permissionsFor(client.user);
-
-console.log('[AAR Channel Upload Check]', {
-  channelId: reviewChannel.id,
-  canViewChannel: botPermissions?.has(PermissionFlagsBits.ViewChannel),
-  canSendMessages: botPermissions?.has(PermissionFlagsBits.SendMessages),
-  canAttachFiles: botPermissions?.has(PermissionFlagsBits.AttachFiles),
-  files: permanentFiles.map(file => ({
-    name: file.name,
-    size: file.attachment?.length
-  }))
-});
   const reviewMessage = await reviewChannel.send({
     flags: MessageFlags.IsComponentsV2,
     components: [container],
@@ -1966,23 +1954,9 @@ console.log('[AAR Channel Upload Check]', {
       parse: []
     }
   });
-console.log('[AAR Upload Debug]', {
-  outgoingFiles: permanentFiles.map(file => ({
-    name: file.name,
-    hasAttachment: Boolean(file.attachment)
-  })),
-  returnedMessageId: reviewMessage.id,
-  returnedAttachmentCount: reviewMessage.attachments.size
-});
-
 const fetchedReviewMessage = await reviewChannel.messages.fetch(
   reviewMessage.id
 );
-
-console.log('[AAR Fetched Message Debug]', {
-  fetchedAttachmentCount: fetchedReviewMessage.attachments.size,
-  fetchedAttachments: fetchedReviewMessage.attachments.map(file => file.name)
-});
 
  const galleryItems = fetchedReviewMessage.components
   .flatMap(container => container.components || [])
@@ -2000,14 +1974,6 @@ const evidence = galleryItems.map((item, index) => {
     contentType: media.content_type || null,
     type: 'original'
   };
-});
-
-console.log('[AAR Evidence Debug]', {
-  expectedCount: evidenceNames.length,
-  actualCount: evidence.length,
-  expectedNames: evidenceNames,
-  actualNames: evidence.map(file => file.name),
-  attachmentIds: evidence.map(file => file.id)
 });
 
 const attachmentsMatch = evidence.length === evidenceNames.length &&
