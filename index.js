@@ -844,6 +844,13 @@ client.once(Events.ClientReady, async (readyClient) => {
   // Run once when Servitor starts.
   await runAarRecovery();
 
+  // Ensure the persistent leaderboard exists and reflects current approved scores.
+  try {
+    await refreshLeaderboard(readyClient);
+  } catch (error) {
+    console.error('[Leaderboard] Startup refresh failed:', error);
+  }
+
   // Retry failed review-card updates every 5 minutes.
   aarRecoveryInterval = setInterval(runAarRecovery, 5 * 60 * 1000);
 
