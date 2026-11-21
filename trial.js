@@ -1209,7 +1209,7 @@ async function processTrialReviewDecision(interaction) {
                 );
             }
 
-            const resultCompleters = getTrialCompleterProgress(
+            const resultCompleters = await getTrialCompleterProgress(
                 submission.completers.map(member => ({
                     id: member.user_id
                 }))
