@@ -3887,6 +3887,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
         const reportChannel = await interaction.guild.channels.fetch(
           process.env.REPORT_CHANNEL_ID
         );
@@ -3896,9 +3898,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           !reportChannel.isTextBased() ||
           !reportChannel.isSendable()
         ) {
-          await interaction.reply({
-            content: 'The configured AAR report channel is unavailable.',
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: 'The configured AAR report channel is unavailable.'
           });
 
           return;
@@ -3955,9 +3956,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           components: [firstRow]
         });
 
-        await interaction.reply({
-          content: `AAR panel posted successfully in ${reportChannel}.`,
-          flags: MessageFlags.Ephemeral
+        await interaction.editReply({
+          content: `AAR panel posted successfully in ${reportChannel}.`
         });
 
         return;
