@@ -62,7 +62,7 @@ See [TURSO_MIGRATION_NOTES.md](./TURSO_MIGRATION_NOTES.md) for the migration pro
 - Ten configurable Honors with award/revocation history and display layouts.
 - Saga History profile cards generated with Sharp.
 - Combined top-10 Saga Points leaderboard.
-- SQLite persistence.
+- Turso/libSQL persistence on `migration/turso` (SQLite remains the `main` branch baseline).
 
 ## Requirements
 
