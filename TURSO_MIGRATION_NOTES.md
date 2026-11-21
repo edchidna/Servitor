@@ -607,3 +607,9 @@ No live Discord server, production database, production backup, hosting service,
 - Updated restore to validate sequence metadata against the target schema, restore counters after table data, and verify the exact resulting sequence inventory.
 - Expanded the existing end-to-end migration → backup → restore regression test with sequence values deliberately set higher than the maximum surviving row IDs. The test asserts that both migration and restore preserve those high-water marks.
 - A fresh CI run is required before this change is considered validated. No production database, production backup, live Discord bot, or hosting service was accessed.
+
+### Validation of AUTOINCREMENT sequence preservation
+
+- GitHub Actions run #248 on commit `26b1f21c5fcd50c1dba2aea6fa2ed91f6e4c8580` completed successfully.
+- The run passed dependency installation, syntax checks, the expanded local SQLite → libSQL → logical backup → restore end-to-end test (including deliberately elevated AUTOINCREMENT high-water marks), the Operations modal regression, the full remote Turso persistence suite, and the remote foreign-key probe.
+- README and migration notes were updated afterward; those follow-up commits are documentation-only.
