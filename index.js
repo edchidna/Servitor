@@ -1768,7 +1768,7 @@ async function buildAarApprovalResult(report, participants, reviewerId) {
       `Approved by: <@${reviewerId}>`
     )
     : (
-      `**${formatAarPoints(totalAwarded)} AAR points awarded ` +
+      `**${formatAarPoints(totalAwarded)} Saga points awarded ` +
       `to ${participants.length} Brother(s).**\n` +
       `Approved by: <@${reviewerId}>`
     );
@@ -2413,7 +2413,7 @@ async function processReportReaction(reaction, user) {
             `Approved by: <@${user.id}>`
           )
           : (
-            `**${formatPoints(totalAwarded)} AAR points awarded ` +
+            `**${formatPoints(totalAwarded)} Saga points awarded ` +
             `to ${participants.length} Brother(s).**\n` +
             `Approved by: <@${user.id}>`
           ),
