@@ -8,7 +8,7 @@
 
 - `main` remains untouched; all migration work is confined to `migration/turso`.
 - The migration implementation is now substantially integrated: the shared async Turso client, schemas, AAR/Ordeal/Trial/Honor/leaderboard/Saga/tenure persistence, startup wiring, transfer utility, and backup/restore utilities are present on this branch.
-- This branch is **not production-ready**. Remote Turso validation, a rehearsal using a copy of the real SQLite database, remote recovery testing, and Discord test-server acceptance remain outstanding.
+- This branch is **not production-ready**. Remote Turso validation, a rehearsal using a copy of the real SQLite database, remote recovery testing, and controlled live-server acceptance remain outstanding.
 - Do not merge, deploy, or cut over without Ed's explicit approval. Keep the original `aar-database.db` and its independent backup untouched until migration and recovery rehearsals are complete.
 
 > **Document status:** This file contains chronological audit notes from earlier implementation stages. Sections explicitly titled “checkpoint” or “historical” record what was true at that point in development; they are not current-state claims. The current authoritative implementation and validation summary is in the README and the latest sections of this document.
@@ -339,8 +339,8 @@ This checkpoint supersedes earlier notes that said these workflows and startup w
 
 - A disposable remote Turso database has not yet been connected to the test workflow. The optional remote test steps are skipped because `TURSO_TEST_DATABASE_URL` and `TURSO_TEST_AUTH_TOKEN` are not configured.
 - The real SQLite database has not yet been copied to a disposable target and rehearsed end-to-end. The transfer utility now preflights target emptiness and schema columns, and verifies row content digests, but actual historical data has not been exercised.
-- The logical JSON backup now has a verified local restore utility and a passing local round-trip test. A real remote Turso recovery rehearsal and off-host backup retrieval have not yet been performed.
-- Discord end-to-end acceptance testing has not been run. Existing submission, review, scoring, role, and notification behavior must be verified on a test server.
+- The logical JSON backup now has a verified local restore utility and a passing local round-trip test. Backup format v2 preserves SQLite AUTOINCREMENT counters in addition to table rows. A real remote Turso recovery rehearsal and off-host backup retrieval have not yet been performed.
+- Discord end-to-end acceptance testing has not been run. Existing submission, review, scoring, role, and notification behavior must be verified on a live server.
 - The final hosting environment has not been validated.
 - `main` remains the production SQLite baseline. Do not merge or deploy this branch until the blockers above are resolved.
 
@@ -367,7 +367,7 @@ The local automated suite is now running successfully; it is not a substitute fo
 - Added npm scripts: `npm run backup` for the Turso logical JSON export and `npm run migrate:sqlite-to-turso` for the one-time SQLite transfer utility.
 - Updated the README to clearly state that `main` remains the SQLite production baseline and `migration/turso` is not deployable yet.
 - The transfer utility now checks SQLite `integrity_check`, requires every expected application table to exist, holds one source read snapshot, imports each table transactionally, and verifies imported row counts (or Honor IDs) before proceeding.
-- The backup reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads. A matching `restore-database.js` now restores into a clean target only, validates backup format/schema version/table inventory, preserves the seeded Honor records through upsert, and verifies every restored table by row count and content digest. The end-to-end local test now exercises SQLite migration, JSON backup, and restore to a second database.
+- The backup reads all tables inside one read transaction, so the export represents a consistent snapshot rather than a sequence of independently timed table reads. A matching `restore-database.js` now restores into a clean target only, validates backup format/schema version/table inventory, preserves the seeded Honor records through upsert, and verifies every restored table by row count and content digest, then restores and verifies AUTOINCREMENT counters. The end-to-end local test now exercises SQLite migration, JSON backup, and restore to a second database.
 
 The branch has not been merged, deployed, or tested against a live Turso database.
 
@@ -425,7 +425,7 @@ The branch has not been merged, deployed, or tested against a live Turso databas
 - `deploy-commands.js` is byte-for-byte unchanged from `main`; the slash-command definitions were not modified in this migration branch.
 - A static comparison found all 22 interaction custom IDs in `index.js` unchanged from `main`.
 - The Operations modal regression test now runs in CI and verifies field order/constraints, difficulty values and selection flow, squad size/participant rules, and that the modal still calls the async AAR persistence and existing evidence/review-message path.
-- These checks support the requirement to preserve the established Servitor workflow, but do not replace a live Discord test server acceptance run.
+- These checks support the requirement to preserve the established Servitor workflow, but do not replace a live controlled live-server acceptance run.
 
 
 - CI remote-test secret handling was hardened by moving the two dedicated Turso test secrets to job-level environment scope, so the step conditions can actually evaluate whether remote verification should run. The test suite still refuses any non-empty remote database before making schema changes.
@@ -484,7 +484,7 @@ The earlier hosting-runtime findings above are historical. The current branch no
 
 These are code-level changes and a test has been added; the latest GitHub Actions result has not yet been verified. They do not constitute a host runtime test.
 
-**Still blocking host setup / Discord acceptance:** validate the current commit in CI; configure and run remote Turso persistence tests against a dedicated empty disposable database; rehearse SQLite migration, Turso backup, restore, and rollback using disposable copies/targets; then configure the selected host and run the full Discord test-server acceptance checklist. The original production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without explicit approval.
+**Still blocking host setup / Discord acceptance:** validate the current commit in CI; configure and run remote Turso persistence tests against a dedicated empty disposable database; rehearse SQLite migration, Turso backup, restore, and rollback using disposable copies/targets; then configure the selected host and run the full controlled live-server acceptance checklist. The original production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without explicit approval.
 
 ## CI recheck after test-secret configuration (2026-11-21)
 
@@ -502,7 +502,7 @@ These are code-level changes and a test has been added; the latest GitHub Action
 - The separate remote foreign-key enforcement probe passed.
 - The remote smoke suite checks that its database is empty before creating its test schema and drops its owned test tables during teardown. Keep this database dedicated to CI smoke tests.
 - The passing CI suite is not a rehearsal using a copy of the real `aar-database.db`. The transfer and logical backup/restore rehearsal currently covered by automated tests uses synthetic legacy SQLite data and local libSQL file targets.
-- Still outstanding: rehearse migration using a disposable copy of the actual SQLite database, rehearse a remote Turso logical backup and restore into a second clean disposable Turso database, complete Discord test-server acceptance, and test startup/shutdown on the chosen host.
+- Still outstanding: rehearse migration using a disposable copy of the actual SQLite database, rehearse a remote Turso logical backup and restore into a second clean disposable Turso database, complete controlled live-server acceptance, and test startup/shutdown on the chosen host.
 - No production database or its independent backup has been accessed or modified. No merge, deployment, or production cutover has occurred.
 
 
@@ -514,7 +514,7 @@ These are code-level changes and a test has been added; the latest GitHub Action
 - Confirmed the correction on the latest workflow commit `5308b46321f5fd18bfd3d3372c5a4a3293f8236a`: push run #105 and the queued pull-request run #106 both completed successfully. Each passed dependency installation, syntax checks, local tests, the Operations modal regression, all 15 remote persistence tests, and the remote foreign-key probe.
 - The CI test database is now reserved for serialized smoke-test runs only. Do not reuse it as a migration or restore target.
 
-The successful CI runs establish remote persistence behavior for the synthetic smoke-test cases. They do not replace the remaining real-database migration rehearsal, remote backup/restore rehearsal, Discord test-server acceptance, or non-production hosting rehearsal.
+The successful CI runs establish remote persistence behavior for the synthetic smoke-test cases. They do not replace the remaining real-database migration rehearsal, remote backup/restore rehearsal, controlled live-server acceptance, or non-production hosting rehearsal.
 
 ## Runtime code audit hardening (2026-11-21)
 
@@ -545,7 +545,7 @@ The continued static audit found and corrected the following issues on `migratio
 
 - Complete a migration rehearsal using a disposable copy of the actual SQLite database.
 - Complete a remote Turso logical backup and restore rehearsal into a separate clean disposable database.
-- Complete Discord test-server acceptance for AAR, Ordeal, Trial, Honors, Saga adjustments, leaderboard, role changes, evidence uploads, and restart/recovery.
+- Complete controlled live-server acceptance for AAR, Ordeal, Trial, Honors, Saga adjustments, leaderboard, role changes, evidence uploads, and restart/recovery.
 - Complete a non-production hosting rehearsal for startup, readiness, shutdown, and restart behavior.
 
 The branch remains unmerged and undeployed. The production SQLite database and its independent backup remain untouched. Do not merge, deploy, or cut over without Ed's explicit approval.
@@ -568,7 +568,7 @@ A further pass focused on partial Discord submissions, review recovery, and conc
 - Dependency installation, syntax validation, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed.
 - The subsequent leaderboard wording change is text-only; no production or remote database was accessed.
 
-The same launch gates remain: real SQLite-copy migration rehearsal, remote backup/restore rehearsal, Discord test-server acceptance, and non-production hosting rehearsal. No merge, deployment, or production cutover has occurred.
+The same launch gates remain: real SQLite-copy migration rehearsal, remote backup/restore rehearsal, controlled live-server acceptance, and non-production hosting rehearsal. No merge, deployment, or production cutover has occurred.
 
 ## Evidence handling hardening (2026-11-21)
 
@@ -591,10 +591,19 @@ The same launch gates remain: real SQLite-copy migration rehearsal, remote backu
 - Removed unused Ordeal base-point values from the challenge definitions and selection display. Ordeals are challenge/role-reward workflows and must not appear to offer point rewards.
 - GitHub Actions run #218 on commit `358667c50bcf1c500accebfa26be2f3e8ca4a6bb` completed successfully after the AAR panel and Ordeal selection corrections. Dependency installation, syntax checks, local libSQL tests, the Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe passed. The subsequent migration-notes-only update does not alter runtime code.
 
-No Discord test server, production database, production backup, hosting service, or live bot was accessed. No merge, deployment, or production cutover occurred.
+No live Discord server, production database, production backup, hosting service, or live bot was accessed. No merge, deployment, or production cutover occurred.
 
 ### Runtime configuration fail-fast follow-up
 
 - Expanded startup validation to require every core channel and role ID used by AAR, Ordeal, Trial, NCO discrepancy alerts, leaderboard, Trial graduation, and Saga tenure tracking. Previously, a subset of these values could be missing while the process still logged in, leaving one or more workflows unusable without a clear startup failure.
 - Optional Ordeal reward-role IDs remain optional; a challenge is offered only when its own reward role is configured.
 - GitHub Actions run #226 on the subsequent branch update completed successfully, including dependency installation, syntax checks, local libSQL tests, Operations modal regression, all 15 remote Turso persistence tests, and the remote foreign-key probe. The workflow checks out the migration branch, which included this startup validation change. It validates that values are present/nonblank, not that configured Discord IDs resolve to the intended live resources; that remains part of isolated Discord acceptance testing.
+
+## AUTOINCREMENT sequence preservation audit (2026-11-21)
+
+- Found a migration/recovery gap: copying live rows preserves explicit primary-key values, but does not necessarily preserve SQLite's historical `sqlite_sequence` high-water marks when the highest-ID records were deleted before migration or backup.
+- Updated the SQLite-to-Turso transfer to inventory AUTOINCREMENT tables, copy the exact sequence rows after data import, and verify the target counters.
+- Updated logical backup format to version 2. The backup captures table rows and AUTOINCREMENT sequence metadata in the same read transaction so they represent one consistent snapshot.
+- Updated restore to validate sequence metadata against the target schema, restore counters after table data, and verify the exact resulting sequence inventory.
+- Expanded the existing end-to-end migration → backup → restore regression test with sequence values deliberately set higher than the maximum surviving row IDs. The test asserts that both migration and restore preserve those high-water marks.
+- A fresh CI run is required before this change is considered validated. No production database, production backup, live Discord bot, or hosting service was accessed.
