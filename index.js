@@ -4859,6 +4859,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      // Acknowledge before querying Turso so database latency cannot
+      // exceed Discord's initial interaction response deadline.
+      await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+      });
+
       // ----------------------------------
       // CHECK PREVIOUS SUBMISSIONS
       // ----------------------------------
@@ -4965,10 +4971,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
 
         processingOrdealSubmissions.add(interaction.user.id);
-
-        await interaction.deferReply({
-          flags: MessageFlags.Ephemeral
-        });
 
         // ----------------------------------
         // CHECK REVIEW CHANNEL
