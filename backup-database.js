@@ -113,11 +113,35 @@ async function backupDatabase() {
       `servitor-turso-backup-${timestamp}.json`
     );
 
-    fs.writeFileSync(outputPath, JSON.stringify(backup, null, 2), {
-      encoding: 'utf8',
-      flag: 'wx',
-      mode: 0o600
-    });
+    // Write to a same-directory temporary file first so a process interruption
+    // cannot leave a truncated file masquerading as a completed JSON backup.
+    const temporaryPath = `${outputPath}.tmp-${process.pid}`;
+    let descriptor;
+
+    try {
+      descriptor = fs.openSync(temporaryPath, 'wx', 0o600);
+      fs.writeFileSync(descriptor, JSON.stringify(backup, null, 2), {
+        encoding: 'utf8'
+      });
+      fs.fsyncSync(descriptor);
+      fs.closeSync(descriptor);
+      descriptor = undefined;
+      fs.renameSync(temporaryPath, outputPath);
+    } catch (error) {
+      if (descriptor !== undefined) {
+        try {
+          fs.closeSync(descriptor);
+        } catch {
+          // Preserve the original backup-write error.
+        }
+      }
+      try {
+        fs.rmSync(temporaryPath, { force: true });
+      } catch {
+        // Preserve the original backup-write error.
+      }
+      throw error;
+    }
 
     console.log(`Turso logical backup written to ${outputPath}`);
     console.log(`Exported ${Object.keys(tables).length} tables.`);
