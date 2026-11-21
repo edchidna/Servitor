@@ -1020,7 +1020,7 @@ function createOperationsModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
 
     );
@@ -1130,7 +1130,7 @@ function createPvpModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
     );
 }
@@ -1176,7 +1176,7 @@ function createStratagemsModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
 
     );
@@ -1223,7 +1223,7 @@ function createSiegeModal() {
 
       new LabelBuilder()
         .setLabel('Evidence Files')
-        .setDescription('Upload 1 to 6 proof images or files.')
+        .setDescription('Upload 1 to 6 proof images or files (10 MB maximum per file).')
         .setFileUploadComponent(evidenceUpload)
     );
 }
@@ -1278,7 +1278,7 @@ function createOrdealModal(ordeal) {
       new LabelBuilder()
         .setLabel('Challenge Evidence')
         .setDescription(
-          'Upload 1 to 6 proof images or files.'
+          'Upload 1 to 6 proof images or files (10 MB maximum per file).'
         )
         .setFileUploadComponent(evidenceUpload)
     );
