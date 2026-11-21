@@ -3098,7 +3098,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.commandName === 'sagapoint') {
 
         if (!interaction.guild) {
-          await interaction.editReply({
+          await interaction.reply({
             content: 'Saga Point commands can only be used inside a server.',
             flags: MessageFlags.Ephemeral
           });
