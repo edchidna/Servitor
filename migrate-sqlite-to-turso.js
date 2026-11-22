@@ -291,30 +291,6 @@ async function main() {
       );
     }
 
-    const defaultHonorIcons = [
-      'assets/honors/Conversion ward.png',
-      'assets/honors/Crux Terminatus.png',
-      'assets/honors/Fang Necklace.png',
-      'assets/honors/Gem.png',
-      'assets/honors/Rune.png',
-      null, null, null, null, null
-    ];
-    const targetHonorResult = await target.execute(
-      'SELECT honor_id, display_name, display_order, icon_path FROM honors ORDER BY display_order'
-    );
-    const targetHonorsAreCleanSeed = targetHonorResult.rows.length === seededHonorIds.length &&
-      targetHonorResult.rows.every((row, index) =>
-        row.honor_id === seededHonorIds[index] &&
-        row.display_name === `Honor ${index + 1}` &&
-        Number(row.display_order) === index + 1 &&
-        (row.icon_path ?? null) === defaultHonorIcons[index]
-      );
-    if (!targetHonorsAreCleanSeed) {
-      throw new Error(
-        'Target honors table is not in its expected clean seeded state. Refusing to merge data.'
-      );
-    }
-
     for (const table of TABLES_IN_INSERT_ORDER) {
       if (!sourceTables.has(table)) continue;
       const quotedTable = quoteIdentifier(table);
@@ -344,6 +320,43 @@ async function main() {
           `Target table ${table} is not empty. Refusing to merge or duplicate records.`
         );
       }
+    }
+
+    // Confirm that the target contains exactly the expected clean Honor seeds.
+    const expectedHonorSeeds = [
+      ['honor_1', 'Conversion Ward', 1, 'assets/honors/Conversion ward.png'],
+      ['honor_2', 'Rune', 2, 'assets/honors/Rune.png'],
+      ['honor_3', 'Gem', 3, 'assets/honors/Gem.png'],
+      ['honor_4', 'Fang Necklace', 4, 'assets/honors/Fang Necklace.png'],
+      ['honor_5', 'Talisman', 5, 'assets/honors/Talisman.png'],
+      ['honor_6', 'Crux Terminatus', 6, 'assets/honors/Crux Terminatus.png'],
+      ['honor_7', 'Honor 7', 7, null],
+      ['honor_8', 'Honor 8', 8, null],
+      ['honor_9', 'Honor 9', 9, null],
+      ['honor_10', 'Honor 10', 10, null]
+    ];
+
+    const targetHonorResult = await target.execute(
+      'SELECT honor_id, display_name, display_order, icon_path FROM honors ORDER BY display_order'
+    );
+
+    const targetHonorsAreCleanSeed =
+      targetHonorResult.rows.length === expectedHonorSeeds.length &&
+      targetHonorResult.rows.every((row, index) => {
+        const expected = expectedHonorSeeds[index];
+
+        return (
+          row.honor_id === expected[0] &&
+          row.display_name === expected[1] &&
+          Number(row.display_order) === expected[2] &&
+          (row.icon_path ?? null) === expected[3]
+        );
+      });
+
+    if (!targetHonorsAreCleanSeed) {
+      throw new Error(
+        'Target honors table is not in its expected clean seeded state. Refusing to merge data.'
+      );
     }
 
     for (const table of TABLES_IN_INSERT_ORDER) {

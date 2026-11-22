@@ -88,9 +88,9 @@ function validateAutoIncrementSequences(state) {
   const seen = new Set();
   for (const row of state.sequences) {
     if (!row || typeof row.name !== 'string' ||
-        !allowed.has(row.name) || seen.has(row.name) ||
-        typeof row.seq !== 'number' ||
-        !Number.isSafeInteger(row.seq) || row.seq < 0) {
+      !allowed.has(row.name) || seen.has(row.name) ||
+      typeof row.seq !== 'number' ||
+      !Number.isSafeInteger(row.seq) || row.seq < 0) {
       throw new Error('Backup contains invalid AUTOINCREMENT sequence values.');
     }
     seen.add(row.name);
@@ -242,25 +242,39 @@ async function restoreDatabase(backupFilePath) {
     const target = database.getClient();
 
     // Preflight all tables before importing a single row.
-    const honorIds = Array.from({ length: 10 }, (_, index) => `honor_${index + 1}`);
-    const defaultHonorIcons = [
-      'assets/honors/Conversion ward.png',
-      'assets/honors/Crux Terminatus.png',
-      'assets/honors/Fang Necklace.png',
-      'assets/honors/Gem.png',
-      'assets/honors/Rune.png',
-      null, null, null, null, null
+
+    const expectedHonorSeeds = [
+      ['honor_1', 'Conversion Ward', 1, 'assets/honors/Conversion ward.png'],
+      ['honor_2', 'Rune', 2, 'assets/honors/Rune.png'],
+      ['honor_3', 'Gem', 3, 'assets/honors/Gem.png'],
+      ['honor_4', 'Fang Necklace', 4, 'assets/honors/Fang Necklace.png'],
+      ['honor_5', 'Talisman', 5, 'assets/honors/Talisman.png'],
+      ['honor_6', 'Crux Terminatus', 6, 'assets/honors/Crux Terminatus.png'],
+      ['honor_7', 'Honor 7', 7, null],
+      ['honor_8', 'Honor 8', 8, null],
+      ['honor_9', 'Honor 9', 9, null],
+      ['honor_10', 'Honor 10', 10, null]
     ];
+
+    const honorIds = expectedHonorSeeds.map(([id]) => id);
+
     const targetHonors = await target.execute(
       'SELECT honor_id, display_name, display_order, icon_path FROM honors ORDER BY display_order'
     );
-    const targetHonorsAreCleanSeed = targetHonors.rows.length === honorIds.length &&
-      targetHonors.rows.every((row, index) =>
-        row.honor_id === honorIds[index] &&
-        row.display_name === `Honor ${index + 1}` &&
-        Number(row.display_order) === index + 1 &&
-        (row.icon_path ?? null) === defaultHonorIcons[index]
-      );
+
+    const targetHonorsAreCleanSeed =
+      targetHonors.rows.length === expectedHonorSeeds.length &&
+      targetHonors.rows.every((row, index) => {
+        const expected = expectedHonorSeeds[index];
+
+        return (
+          row.honor_id === expected[0] &&
+          row.display_name === expected[1] &&
+          Number(row.display_order) === expected[2] &&
+          (row.icon_path ?? null) === expected[3]
+        );
+      });
+
     if (!targetHonorsAreCleanSeed) {
       throw new Error('Target honors table is not in its expected clean seeded state.');
     }

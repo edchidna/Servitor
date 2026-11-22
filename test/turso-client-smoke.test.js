@@ -84,7 +84,22 @@ after(async () => {
     }
   } finally {
     await database.closeDatabase();
-    fs.rmSync(tempDirectory, { recursive: true, force: true });
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      try {
+        fs.rmSync(tempDirectory, {
+          recursive: true,
+          force: true
+        });
+        break;
+      } catch (error) {
+        if (error.code !== 'EBUSY' || attempt === 9) {
+          throw error;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    }
   }
 });
 
@@ -338,7 +353,8 @@ test('Ordeal approval remains a separate zero-point challenge and records its au
   assert.equal(Number(ordealPoints.rows[0].count), 0);
 });
 
-test('Honor award, duplicate protection, removal, and re-award remain consistent', async () => {
+
+test('Honor repeat awards, one-copy removal, and re-award remain consistent', async () => {
   const first = await honor.awardHonor(
     'smoke-guild',
     'smoke-honor-member',
@@ -347,13 +363,21 @@ test('Honor award, duplicate protection, removal, and re-award remain consistent
   );
   assert.equal(first.success, true);
 
-  const duplicate = await honor.awardHonor(
+  const second = await honor.awardHonor(
     'smoke-guild',
     'smoke-honor-member',
     'honor_1',
     'smoke-moderator'
   );
-  assert.equal(duplicate.success, false);
+  assert.equal(second.success, true);
+
+  let active = await honor.getMemberHonors(
+    'smoke-guild',
+    'smoke-honor-member'
+  );
+  assert.equal(active.length, 1);
+  assert.equal(active[0].honor_id, 'honor_1');
+  assert.equal(Number(active[0].count), 2);
 
   const removed = await honor.removeHonor(
     'smoke-guild',
@@ -363,6 +387,14 @@ test('Honor award, duplicate protection, removal, and re-award remain consistent
   );
   assert.equal(removed.success, true);
 
+  active = await honor.getMemberHonors(
+    'smoke-guild',
+    'smoke-honor-member'
+  );
+  assert.equal(active.length, 1);
+  assert.equal(active[0].honor_id, 'honor_1');
+  assert.equal(Number(active[0].count), 1);
+
   const reawarded = await honor.awardHonor(
     'smoke-guild',
     'smoke-honor-member',
@@ -371,9 +403,13 @@ test('Honor award, duplicate protection, removal, and re-award remain consistent
   );
   assert.equal(reawarded.success, true);
 
-  const active = await honor.getMemberHonors('smoke-guild', 'smoke-honor-member');
+  active = await honor.getMemberHonors(
+    'smoke-guild',
+    'smoke-honor-member'
+  );
   assert.equal(active.length, 1);
   assert.equal(active[0].honor_id, 'honor_1');
+  assert.equal(Number(active[0].count), 2);
 });
 
 test('Saga point adjustments include approved AAR and Trial points and cap deductions', async () => {

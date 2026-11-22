@@ -257,7 +257,7 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
       { display_name: 'Veteran Honor', icon_path: 'assets/honors/legacy-1.png' }
     );
 
-    targetClient.close();
+    await targetClient.close();
     targetClient = null;
 
     const backupDirectory = path.join(directory, 'backups');
@@ -396,9 +396,25 @@ test('full SQLite-to-libSQL transfer preserves all legacy tables and row content
       blockedCheck.close();
     }
   } finally {
-    if (targetClient) targetClient.close();
+    if (targetClient) await targetClient.close();
     source.close();
-    fs.rmSync(directory, { recursive: true, force: true });
+
+    try {
+      fs.rmSync(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 200
+      });
+    } catch (error) {
+      if (error.code === 'EBUSY' || error.code === 'EPERM') {
+        console.warn(
+          `[TEST CLEANUP] Could not immediately remove temporary directory: ${directory}`
+        );
+      } else {
+        throw error;
+      }
+    }
   }
 });
 
