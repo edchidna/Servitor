@@ -40,3 +40,7 @@ services:
         sync: false
       - key: IRON_WOLVES_ROLE_ID
         sync: false
+      - key: LONE_WOLF_ROLE_ID
+        sync: false
+      - key: DOUBLE_TROUBLE_ROLE_ID
+        sync: false
