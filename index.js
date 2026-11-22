@@ -1686,7 +1686,7 @@ function buildOrdealReviewContainer({
       : []),
     `**Gene Seed:** ${submission.gene_seed ?? 'Not specified'}`,
     `**Armoury Data:** ${submission.armoury_data ?? 'Not specified'}`,
-    '**AAR Points:** 0 (Ordeals do not affect the leaderboard)'
+    '**Saga Points:** 0 (Ordeals do not affect the leaderboard)'
   ].join('\n');
 
   const suspiciousWarning = Number(submission.suspicious_flag) === 1
@@ -1768,11 +1768,11 @@ function buildAarApprovalResult(report, participants, reviewerId) {
 
   const approvalSummary = report.game_mode === 'PVP'
     ? (
-      `**Total points awarded to squad: ${formatAarPoints(totalAwarded)} AAR points.**\n` +
+      `**Total points awarded to squad: ${formatAarPoints(totalAwarded)} Saga Points.**\n` +
       `Approved by: <@${reviewerId}>`
     )
     : (
-      `**${formatAarPoints(totalAwarded)} AAR points awarded ` +
+      `**${formatAarPoints(totalAwarded)} Saga Points awarded ` +
       `to ${participants.length} Brother(s).**\n` +
       `Approved by: <@${reviewerId}>`
     );
@@ -1816,7 +1816,7 @@ function buildAarApprovalResult(report, participants, reviewerId) {
   return (
     `${approvalSummary}\n\n` +
     `**${report.game_mode} Points Breakdown**\n${scoreBreakdown}\n\n` +
-    `**Updated AAR Totals**\n${memberTotals.join('\n')}`
+    `**Updated Saga Totals**\n${memberTotals.join('\n')}`
   );
 }
 
@@ -2601,14 +2601,14 @@ WHERE id = ?
       });
 
       const approvalField = {
-        name: 'AAR Approval',
+        name: 'Saga Approval',
         value: reportCategory === 'PVP'
           ? (
-            `**Total points awarded to squad: ${formatPoints(totalAwarded)} AAR points.**\n` +
+            `**Total points awarded to squad: ${formatPoints(totalAwarded)} Saga Points.**\n` +
             `Approved by: <@${user.id}>`
           )
           : (
-            `**${formatPoints(totalAwarded)} AAR points awarded ` +
+            `**${formatPoints(totalAwarded)} Saga Points awarded ` +
             `to ${participants.length} Brother(s).**\n` +
             `Approved by: <@${user.id}>`
           ),
@@ -3208,12 +3208,12 @@ async function processOrdealReaction(reaction, user) {
         `**Challenge completion approved!**\n` +
         `Reward role: <@&${submission.reward_role_id}>\n` +
         `Role recipients: ${completerIds.map(id => `<@${id}>`).join(', ')}\n` +
-        `AAR points awarded: **0**\n` +
+        `Saga Points awarded: **0**\n` +
         `Approved by: <@${user.id}>`
       )
       : (
         `**Challenge submission rejected.**\n` +
-        `No reward role or AAR points were granted.\n` +
+        `No reward role or Saga Points were granted.\n` +
         `Rejected by: <@${user.id}>`
       );
 
