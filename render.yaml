@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: servitor
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /ready
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: REPORT_CHANNEL_ID
+        sync: false
+      - key: REVIEW_CHANNEL_ID
+        sync: false
+      - key: ORDEAL_REVIEW_CHANNEL_ID
+        sync: false
+      - key: NCO_REVIEW_CHANNEL_ID
+        sync: false
+      - key: LEADERBOARD_CHANNEL_ID
+        sync: false
+      - key: TRIAL_PANEL_CHANNEL_ID
+        sync: false
+      - key: TRIAL_REVIEW_CHANNEL_ID
+        sync: false
+      - key: ADMIN_ROLE_ID
+        sync: false
+      - key: NCO_ROLE_ID
+        sync: false
+      - key: MODERATOR_ROLE_ID
+        sync: false
+      - key: UNPROVEN_ROLE_ID
+        sync: false
+      - key: IRON_WOLVES_ROLE_ID
+        sync: false
