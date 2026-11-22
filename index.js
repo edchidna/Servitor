@@ -2616,7 +2616,7 @@ WHERE id = ?
       };
 
       const memberTotalsField = {
-        name: 'Updated AAR Totals',
+        name: 'Updated Saga Totals',
         value: memberTotals.join('\n'),
         inline: false
       };
@@ -5789,7 +5789,7 @@ db.prepare(`
         await interaction.editReply({
           content:
             `Your **${ordeal.name}** completion has been submitted successfully!\n\n` +
-            `**AAR Points:** 0\n` +
+            `**Saga Points:** 0\n` +
             `**Participants:** ${participants.length}\n` +
             `**Challenge completers:** ${completerIds.length}\n\n` +
             'Your challenge reward role will be processed after Admin, NCO, or High Command review.'
