@@ -1522,10 +1522,10 @@ function buildAarReviewContainer({
       ? 'REJECTED'
       : 'PENDING REVIEW';
   const pointsLabel = reviewStatus === 'approved'
-    ? 'Points Awarded Per Participant'
+    ? 'Saga Points Awarded Per Participant'
     : reviewStatus === 'rejected'
-      ? 'Submitted Points (Not Awarded) Per Participant'
-      : 'Provisional Points Per Participant';
+      ? 'Submitted Saga Points (Not Awarded) Per Participant'
+      : 'Provisional Saga Points Per Participant';
 
   const createdAt = String(report.created_at || '');
   const createdDate = new Date(`${createdAt.replace(' ', 'T')}Z`);
@@ -1558,7 +1558,7 @@ function buildAarReviewContainer({
       `**Difficulty:** ${reportData.difficulty}`,
       `**Waves Completed:** ${waves}`,
       `**Waves Counted for Scoring:** ${countedWaves}`,
-      `**Base Points:** ${report.base_points} pts`,
+      `**Base Saga Points:** ${report.base_points} pts`,
       `**Pack Bonus:** +${report.bonus_points} pts`,
       `**${pointsLabel}:** ${report.total_points}`
     ].join('\n');
@@ -1779,9 +1779,9 @@ async function buildAarApprovalResult(report, participants, reviewerId) {
     scoreBreakdown = [
       `PVP Game Mode: ${reportData.pvpGameMode}`,
       `Result: ${reportData.result}`,
-      `Base Points: ${formatAarPoints(report.base_points)} pts`,
+      `Base Saga Points: ${formatAarPoints(report.base_points)} pts`,
       `Pack Bonus: +${formatAarPoints(report.bonus_points)} pts`,
-      `**Total Points Per Participant: ${formatAarPoints(report.total_points)} pts**`
+      `**Total Saga Points Per Participant: ${formatAarPoints(report.total_points)} pts**`
     ].join('\n');
   } else if (report.game_mode === 'Siege') {
     const waves = Number(reportData.waves);
@@ -1791,9 +1791,9 @@ async function buildAarApprovalResult(report, participants, reviewerId) {
       `Difficulty: ${reportData.difficulty}`,
       `Waves Completed: ${waves}`,
       `Waves Counted for Scoring: ${countedWaves}`,
-      `Base Points: ${formatAarPoints(report.base_points)} pts`,
+      `Base Saga Points: ${formatAarPoints(report.base_points)} pts`,
       `Pack Bonus: +${formatAarPoints(report.bonus_points)} pts`,
-      `**Total Points: ${formatAarPoints(report.total_points)} pts**`
+      `**Total Saga Points: ${formatAarPoints(report.total_points)} pts**`
     ].join('\n');
   } else {
     const geneSeedBonus = reportData.geneSeed === 'Yes' ? 1 : 0;
@@ -1805,14 +1805,14 @@ async function buildAarApprovalResult(report, participants, reviewerId) {
       `Gene Seed: +${formatAarPoints(geneSeedBonus)} pts`,
       `Armoury Data: +${formatAarPoints(armouryBonus)} pts`,
       `Pack Bonus: +${formatAarPoints(squadBonus)} pts`,
-      `**Total: ${formatAarPoints(report.total_points)} pts**`
+      `**Total Saga Points: ${formatAarPoints(report.total_points)} pts**`
     ].join('\n');
   }
 
   return (
     `${approvalSummary}\n\n` +
-    `**${report.game_mode} Points Breakdown**\n${scoreBreakdown}\n\n` +
-    `**Updated AAR Totals**\n${memberTotals.join('\n')}`
+    `**${report.game_mode} Saga Points Breakdown**\n${scoreBreakdown}\n\n` +
+    `**Updated Saga Totals**\n${memberTotals.join('\n')}`
   );
 }
 
@@ -1878,7 +1878,7 @@ async function recoverPendingAarReviewUpdates() {
             audit.moderator_id
           )
         : (
-          `**Report rejected. No points awarded.**\n` +
+          `**Report rejected. No Saga Points awarded.**\n` +
           `Rejected by: <@${audit.moderator_id}>`
         );
 
@@ -2307,7 +2307,7 @@ async function processReportReaction(reaction, user) {
       const reviewResult = decision === 'approved'
         ? await buildAarApprovalResult(report, participants, user.id)
         : (
-          `**Report rejected. No points awarded.**\n` +
+          `**Report rejected. No Saga Points awarded.**\n` +
           `Rejected by: <@${user.id}>`
         );
 
@@ -2421,7 +2421,7 @@ async function processReportReaction(reaction, user) {
       };
 
       const memberTotalsField = {
-        name: 'Updated AAR Totals',
+        name: 'Updated Saga Totals',
         value: memberTotals.join('\n'),
         inline: false
       };
@@ -2433,13 +2433,13 @@ async function processReportReaction(reaction, user) {
         updatedEmbed.addFields(
           approvalField,
           {
-            name: 'PVP Points Breakdown',
+            name: 'PVP Saga Points Breakdown',
             value:
               `PVP Game Mode: ${reportData.pvpGameMode}\n` +
               `Result: ${reportData.result}\n` +
-              `Base Points: ${formatPoints(report.base_points)} pts\n` +
+              `Base Saga Points: ${formatPoints(report.base_points)} pts\n` +
               `Pack Bonus: +${formatPoints(squadBonus)} pts\n` +
-              `**Total Points Per Participant: ${formatPoints(report.total_points)} pts**`,
+              `**Total Saga Points Per Participant: ${formatPoints(report.total_points)} pts**`,
             inline: false
           },
           memberTotalsField
@@ -2454,14 +2454,14 @@ async function processReportReaction(reaction, user) {
         updatedEmbed.addFields(
           approvalField,
           {
-            name: 'Siege Points Breakdown',
+            name: 'Siege Saga Points Breakdown',
             value:
               `Difficulty: ${reportData.difficulty}\n` +
               `Waves Completed: ${waves}\n` +
               `Waves Counted for Scoring: ${countedWaves}\n` +
-              `Base Points: ${formatPoints(report.base_points)} pts\n` +
+              `Base Saga Points: ${formatPoints(report.base_points)} pts\n` +
               `Pack Bonus: +${formatPoints(squadBonus)} pts\n` +
-              `**Total Points: ${formatPoints(report.total_points)} pts**\n` +
+              `**Total Saga Points: ${formatPoints(report.total_points)} pts**\n` +
               `Decision Status: ${finalStatus}`,
             inline: false
           },
@@ -2482,13 +2482,13 @@ async function processReportReaction(reaction, user) {
         updatedEmbed.addFields(
           approvalField,
           {
-            name: 'Points Breakdown Per Brother',
+            name: 'Saga Points Breakdown Per Brother',
             value:
               `Difficulty (${reportData.difficulty}): ${formatPoints(report.base_points)} pts\n` +
               `Gene Seed: +${formatPoints(geneSeedBonus)} pts\n` +
               `Armoury Data: +${formatPoints(armouryBonus)} pts\n` +
               `Pack Bonus: +${formatPoints(squadBonus)} pts\n` +
-              `**Total: ${formatPoints(report.total_points)} pts**`,
+              `**Total Saga Points: ${formatPoints(report.total_points)} pts**`,
             inline: false
           },
           memberTotalsField
@@ -2501,7 +2501,7 @@ async function processReportReaction(reaction, user) {
         {
           name: 'AAR Review Result',
           value:
-            `**Report rejected. No points awarded.**\n` +
+            `**Report rejected. No Saga Points awarded.**\n` +
             `Rejected by: <@${user.id}>`,
           inline: false
         }
