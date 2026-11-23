@@ -1746,12 +1746,12 @@ function buildOrdealReviewContainer({
   return container;
 }
 
-async function buildAarApprovalResult(report, participants, reviewerId) {
+async function buildAarApprovalResult(report, participants, reviewerId, guildId) {
 
   const reportData = JSON.parse(report.report_data);
   const totalAwarded = report.total_points * participants.length;
   const memberTotals = await Promise.all(participants.map(async participant => {
-    const newTotal = await aarDatabase.getMemberApprovedAarTotal(participant.user_id);
+    const newTotal = await sagaDatabase.getSagaPoints(guildId, participant.user_id);
     const previousTotal = newTotal - report.total_points;
 
     return (
@@ -1875,7 +1875,8 @@ async function recoverPendingAarReviewUpdates() {
         ? await buildAarApprovalResult(
             report,
             participants,
-            audit.moderator_id
+            audit.moderator_id,
+            reviewChannel.guild.id
           )
         : (
           `**Report rejected. No Saga Points awarded.**\n` +
@@ -2305,7 +2306,7 @@ async function processReportReaction(reaction, user) {
 
 
       const reviewResult = decision === 'approved'
-        ? await buildAarApprovalResult(report, participants, user.id)
+        ? await buildAarApprovalResult(report, participants, user.id, message.guild.id)
         : (
           `**Report rejected. No Saga Points awarded.**\n` +
           `Rejected by: <@${user.id}>`
@@ -2391,7 +2392,7 @@ async function processReportReaction(reaction, user) {
         Number(value.toFixed(2)).toString();
 
       const memberTotals = await Promise.all(participants.map(async participant => {
-        const newTotal = await aarDatabase.getMemberApprovedAarTotal(participant.user_id);
+        const newTotal = await sagaDatabase.getSagaPoints(message.guild.id, participant.user_id);
 
         const previousTotal =
           newTotal - report.total_points;
