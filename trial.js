@@ -364,11 +364,12 @@ function validateTrialParticipants(
     }
 
 
-    const hasNCO = packMembers.some(member =>
-        memberHasRole(member, NCO_ROLE_ID)
+    const hasNCOOrHighCommand = packMembers.some(member =>
+        memberHasRole(member, NCO_ROLE_ID) ||
+        memberHasRole(member, MODERATOR_ROLE_ID)
     );
 
-    if (!hasNCO) {
+    if (!hasNCOOrHighCommand) {
         throw new Error(
             'At least one NCO or High Command member must be selected as a Pack Member.'
         );
