@@ -83,7 +83,7 @@ function createTrialPanelPayload() {
                 '• Upload 1–6 evidence files (10 MB maximum each).',
                 '',
                 '**Important:**',
-                'At least one NCO must be selected as a Pack Member.',
+                'At least one NCO or High Command member must be selected as a Pack Member.',
                 'Trial Completers and Pack Members must be different members.',
                 '',
                 'Each approved Trial contributes to a member’s progression.'
@@ -370,7 +370,7 @@ function validateTrialParticipants(
 
     if (!hasNCO) {
         throw new Error(
-            'At least one NCO must be selected as a Pack Member.'
+            'At least one NCO or High Command member must be selected as a Pack Member.'
         );
     }
 
