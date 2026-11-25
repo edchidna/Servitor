@@ -106,12 +106,17 @@ async function saveAarDecision(reportId, decision, moderatorId, participants, to
   });
 }
 
-async function createAarReport({ submitterId, gameMode, reportData, basePoints, bonusPoints, totalPoints, participants }) {
+async function createAarReport({ submitterId, gameMode, reportData, basePoints, bonusPoints, totalPoints, participants, doubleSagaEligible = false }) {
   return database.withTransaction(async tx => {
     const inserted = await tx.execute({
-      sql: `INSERT INTO reports (submitter_id, game_mode, report_data, base_points, bonus_points, total_points)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [submitterId, gameMode, JSON.stringify(reportData), basePoints, bonusPoints, totalPoints]
+      sql: `INSERT INTO reports (
+              submitter_id, game_mode, report_data, base_points,
+              bonus_points, total_points, double_saga_eligible
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        submitterId, gameMode, JSON.stringify(reportData), basePoints,
+        bonusPoints, totalPoints, doubleSagaEligible ? 1 : 0
+      ]
     });
     const reportId = Number(inserted.lastInsertRowid);
     if (!Number.isSafeInteger(reportId) || reportId <= 0) {
