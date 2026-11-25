@@ -1710,12 +1710,16 @@ function buildOrdealReviewContainer({
     `**Challenge:** ${submission.challenge_name}`,
     `**Game Mode:** ${submission.game_mode}`,
     `**Difficulty:** ${submission.difficulty}`,
-    ...(submission.operation_name
+    ...(submission.operation_name && submission.game_mode === 'Operations'
       ? [`**Operation:** ${submission.operation_name}`]
       : []),
-    `**Gene Seed:** ${submission.gene_seed ?? 'Not specified'}`,
-    `**Armoury Data:** ${submission.armoury_data ?? 'Not specified'}`,
-    '**Saga Points:** 0 (Ordeals do not affect the leaderboard)'
+    ...(submission.game_mode === 'Siege'
+      ? [`**Waves Completed:** ${submission.waves_completed ?? 'Not specified'}`]
+      : [
+        `**Gene Seed:** ${submission.gene_seed ?? 'Not specified'}`,
+        `**Armoury Data:** ${submission.armoury_data ?? 'Not specified'}`
+      ]),
+    `**Saga Points:** ${formatAarPoints(Number(submission.total_points || 0))} per participant`
   ].join('\n');
 
   const suspiciousWarning = Number(submission.suspicious_flag) === 1
@@ -3008,6 +3012,14 @@ async function processOrdealReaction(reaction, user) {
       }
     }
 
+    if (decision === 'approved') {
+      try {
+        await refreshLeaderboard(client);
+      } catch (error) {
+        console.error('Could not refresh leaderboard after Hunt approval:', error);
+      }
+    }
+
     // --------------------------------------
     // BUILD COMPONENTS V2 APPROVAL RECEIPT
     // --------------------------------------
@@ -3017,7 +3029,7 @@ async function processOrdealReaction(reaction, user) {
         `**Challenge completion approved!**\n` +
         `Reward role: <@&${submission.reward_role_id}>\n` +
         `Role recipients: ${completerIds.map(id => `<@${id}>`).join(', ')}\n` +
-        `Saga Points awarded: **0**\n` +
+        `Saga Points awarded: **${formatAarPoints(Number(submission.total_points || 0))} per participant**\n` +
         `Approved by: <@${user.id}>`
       )
       : (
