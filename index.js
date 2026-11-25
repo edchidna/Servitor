@@ -714,7 +714,7 @@ const ordeals = [
     description: 'Complete The Siege of Fenris challenge.',
     gameMode: 'Siege',
     difficulty: 'Hard',
-    rewardRoleId: process.env.SIEGE_OF_FENRIS_ROLE_ID || process.env.LONE_WOLF_ROLE_ID
+    rewardRoleId: process.env.SIEGE_OF_FENRIS_ROLE_ID
   },
   {
     key: 'double_trouble',
@@ -722,7 +722,7 @@ const ordeals = [
     description: 'Complete The Hunt for The Wulfen challenge.',
     gameMode: 'Stratagems',
     difficulty: 'Hard',
-    rewardRoleId: process.env.HUNT_FOR_THE_WULFEN_ROLE_ID || process.env.DOUBLE_TROUBLE_ROLE_ID
+    rewardRoleId: process.env.HUNT_FOR_THE_WULFEN_ROLE_ID
   },
   {
     key: 'shadow_wolf',
