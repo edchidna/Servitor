@@ -32,6 +32,22 @@ const commands = [
     .setDescription('Post the AAR report submission panel.'),
 
     new SlashCommandBuilder()
+    .setName('double')
+    .setDescription('Activate a Double Saga event.')
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('saga')
+        .setDescription('Activate Double Saga for a number of hours.')
+        .addIntegerOption(option =>
+          option
+            .setName('duration_hours')
+            .setDescription('How many hours Double Saga should remain active.')
+            .setMinValue(1)
+            .setRequired(true)
+        )
+    ),
+
+  new SlashCommandBuilder()
     .setName('sagahistory')
     .setDescription("Display a member's Saga History profile.")
     .addUserOption(option =>
