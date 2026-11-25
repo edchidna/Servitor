@@ -57,7 +57,7 @@ function createLeaderboardEmbed(scores) {
     .setColor(0x5865F2)
     .setTitle('SPACE MARINE 2 — SAGA POINTS LEADERBOARD')
     .setDescription(description)
-    .setFooter({ text: 'All-time Saga Points | AAR + Trials + Manual Adjustments' })
+    .setFooter({ text: 'All-time Saga Points | AAR + Hunts + Trials + Manual Adjustments' })
     .setTimestamp();
 }
 
