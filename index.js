@@ -1272,7 +1272,7 @@ function createOrdealModal(ordeal) {
             .setCustomId('ordeal_waves')
             .setStyle(TextInputStyle.Short)
             .setMinLength(1)
-            .setMaxLength(5)
+            .setMaxLength(16)
             .setPlaceholder('Enter a positive whole number')
             .setRequired(true)
         )
@@ -4928,9 +4928,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         ? Number(interaction.fields.getStringSelectValues('ordeal_armoury_data')[0])
         : 0;
 
-      const wavesCompleted = ordeal.gameMode === 'Siege'
-        ? Number(interaction.fields.getTextInputValue('ordeal_waves'))
-        : 0;
+      const wavesInput = ordeal.gameMode === 'Siege'
+        ? interaction.fields.getTextInputValue('ordeal_waves').trim()
+        : '0';
+      const wavesCompleted = Number(wavesInput);
 
       const completerIds = [
         ...new Set(workflow.completerIds || [])
@@ -5069,7 +5070,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (
         gameMode === 'Siege' &&
-        (!Number.isSafeInteger(wavesCompleted) || wavesCompleted < 1)
+        (!/^\d+$/.test(wavesInput) || !Number.isSafeInteger(wavesCompleted) || wavesCompleted < 1)
       ) {
         await interaction.reply({
           content: 'Enter a valid positive whole number of waves completed.',
