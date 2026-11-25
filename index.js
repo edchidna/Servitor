@@ -5,11 +5,13 @@ const database = require('./turso-database');
 const { initializeCoreSchema } = require('./core-database-schema');
 const {
   initializeTrialSchema,
-  initializeHonorSchema
+  initializeHonorSchema,
+  initializeDoubleSagaSchema
 } = require('./feature-database-schemas');
 const aarDatabase = require('./aar-database-turso');
 const ordealDatabase = require('./ordeal-database-turso');
 const sagaDatabase = require('./saga-database-turso');
+const doubleSagaDatabase = require('./double-saga-database-turso');
 const memberDatabase = require('./member-database-turso');
 const keep_alive = require('./keep_alive.js');
 const sharp = require('sharp');
@@ -708,19 +710,35 @@ const operations = [
 const ordeals = [
   {
     key: 'lone_wolf',
-    name: 'Lone Wolf',
-    description: 'Complete the Lone Wolf challenge.',
-    gameMode: 'Operations',
-    difficulty: 'Absolute',
-    rewardRoleId: process.env.LONE_WOLF_ROLE_ID
+    name: 'The Siege of Fenris',
+    description: 'Complete The Siege of Fenris challenge.',
+    gameMode: 'Siege',
+    difficulty: 'Hard',
+    rewardRoleId: process.env.SIEGE_OF_FENRIS_ROLE_ID || process.env.LONE_WOLF_ROLE_ID
   },
   {
     key: 'double_trouble',
-    name: 'Double Trouble',
-    description: 'Complete the Double Trouble challenge.',
+    name: 'The Hunt for The Wulfen',
+    description: 'Complete The Hunt for The Wulfen challenge.',
     gameMode: 'Stratagems',
     difficulty: 'Hard',
-    rewardRoleId: process.env.DOUBLE_TROUBLE_ROLE_ID
+    rewardRoleId: process.env.HUNT_FOR_THE_WULFEN_ROLE_ID || process.env.DOUBLE_TROUBLE_ROLE_ID
+  },
+  {
+    key: 'shadow_wolf',
+    name: 'The Shadow Wolf',
+    description: 'Complete The Shadow Wolf challenge.',
+    gameMode: 'Stratagems',
+    difficulty: 'Hard',
+    rewardRoleId: process.env.SHADOW_WOLF_ROLE_ID
+  },
+  {
+    key: 'maelstroms_maw',
+    name: 'The Battle of Maelstrom’s Maw',
+    description: 'Complete The Battle of Maelstrom’s Maw challenge.',
+    gameMode: 'Stratagems',
+    difficulty: 'Hard',
+    rewardRoleId: process.env.MAELSTROM_SURVIVOR_ROLE_ID
   }
 ];
 
@@ -1244,10 +1262,22 @@ function createOrdealModal(ordeal) {
     .setMaxValues(6)
     .setRequired(true);
 
-  return new ModalBuilder()
-    .setCustomId(`ordeal_submit_${ordeal.key}`)
-    .setTitle(`${ordeal.name} Completion`)
-    .addLabelComponents(
+  const challengeFields = ordeal.gameMode === 'Siege'
+    ? [
+      new LabelBuilder()
+        .setLabel('Waves Completed')
+        .setDescription('Enter the total number of waves completed.')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('ordeal_waves')
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(1)
+            .setMaxLength(5)
+            .setPlaceholder('Enter a positive whole number')
+            .setRequired(true)
+        )
+    ]
+    : [
       createStringSelector(
         'ordeal_gene_seed',
         'Gene Seed',
@@ -1257,16 +1287,14 @@ function createOrdealModal(ordeal) {
         'ordeal_armoury_data',
         'Armoury Data',
         ['0', '1', '2', '3']
-      ),
-      ...(ordeal.gameMode === 'Operations'
-        ? [
-          createStringSelector(
-            'ordeal_operation',
-            'Operation',
-            operations
-          )
-        ]
-        : []),
+      )
+    ];
+
+  return new ModalBuilder()
+    .setCustomId(`ordeal_submit_${ordeal.key}`)
+    .setTitle(`${ordeal.name} Completion`)
+    .addLabelComponents(
+      ...challengeFields,
       new LabelBuilder()
         .setLabel('Pack Members')
         .setDescription(
@@ -1281,9 +1309,6 @@ function createOrdealModal(ordeal) {
         .setFileUploadComponent(evidenceUpload)
     );
 }
-// ==========================================
-// ORDEAL WORKFLOW — SELECTOR BUILDERS
-// ==========================================
 
 function createOrdealCompleterSelector() {
 
@@ -3998,7 +4023,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             '🎯 Stratagems\n' +
             '🛡️ Siege\n' +
             '🏆 PVP\n' +
-            '🐺 Ordeals\n\n' +
+            '🐺 Hunts\n\n' +
             'All submitted reports require approval from a server Administrator, configured Admin, NCO, or AAR Moderator/High Command member before Saga Points are awarded.'
           )
           .setFooter({
@@ -4029,7 +4054,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
             new ButtonBuilder()
               .setCustomId('aar_mode_ordeals')
-              .setLabel('☠️ Ordeals')
+              .setLabel('☠️ Hunts')
               .setStyle(ButtonStyle.Danger)
           );
 
@@ -4550,7 +4575,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const ordealSelector = new StringSelectMenuBuilder()
           .setCustomId('aar_ordeal_select')
-          .setPlaceholder('Choose an Ordeal challenge')
+          .setPlaceholder('Choose a Hunt challenge')
           .setMinValues(1)
           .setMaxValues(1)
           .addOptions(
@@ -4566,12 +4591,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.reply({
           content:
-            '**☠️ ORDEALS — CHALLENGE SELECTION**\n\n' +
+            '**☠️ HUNTS — CHALLENGE SELECTION**\n\n' +
             'Choose the challenge your squad completed.\n\n' +
             `${ordealDescriptions}\n\n` +
             '**Rewards (after approval):**\n' +
             '• The designated Discord role/title for approved challenge completers.\n\n' +
-            '**Ordeals award zero Saga Points and do not affect the leaderboard.**\n' +
+            '**Approved Hunts award Saga Points and count toward the leaderboard.**\n' +
             'Only actual challenge completers receive the special Discord role.',
           components: [selectRow],
           flags: MessageFlags.Ephemeral
