@@ -204,7 +204,43 @@ async function initializeHonorSchema() {
   console.log('Honor database schema ready.');
 }
 
+async function initializeDoubleSagaSchema() {
+  await database.withTransaction(async tx => {
+    await tx.execute(`
+      CREATE TABLE IF NOT EXISTS double_saga_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        activated_by TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        duration_hours INTEGER NOT NULL,
+        starts_at_ms INTEGER NOT NULL,
+        ends_at_ms INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    const addColumnIfMissing = async (tableName, columnName, definition) => {
+      const columns = await tx.execute(`PRAGMA table_info(${tableName})`);
+      if (!columns.rows.some(column => column.name === columnName)) {
+        await tx.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+      }
+    };
+
+    await addColumnIfMissing('reports', 'double_saga_eligible', 'INTEGER NOT NULL DEFAULT 0');
+    await addColumnIfMissing('ordeal_submissions', 'double_saga_eligible', 'INTEGER NOT NULL DEFAULT 0');
+    await addColumnIfMissing('ordeal_submissions', 'waves_completed', 'INTEGER NOT NULL DEFAULT 0');
+
+    await tx.execute(`
+      CREATE INDEX IF NOT EXISTS idx_double_saga_event_window
+      ON double_saga_events(starts_at_ms, ends_at_ms)
+    `);
+  });
+
+  console.log('Double Saga database schema ready.');
+}
+
 module.exports = {
   initializeTrialSchema,
-  initializeHonorSchema
+  initializeHonorSchema,
+  initializeDoubleSagaSchema
 };
