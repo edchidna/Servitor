@@ -3207,7 +3207,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         const now = Date.now();
-        const existingEvent = await doubleSagaDatabase.getActiveEvent(now);
+        const existingEvent = await doubleSagaDatabase.getActiveEvent(now, interaction.guild.id);
         if (existingEvent) {
           await interaction.editReply({
             content: `Double Saga is already active and expires <t:${Math.floor(Number(existingEvent.ends_at_ms) / 1000)}:F>.`
@@ -5254,7 +5254,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // ----------------------------------
 
         const submittedAtMs = Date.now();
-        const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(submittedAtMs);
+        const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(submittedAtMs, interaction.guild.id);
         const pointMultiplier = doubleSagaEligible ? 2 : 1;
         const packBonus = participants.length > 1 ? 1 : 0;
 
@@ -5904,7 +5904,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
       // CALCULATE PROVISIONAL POINTS
       // ------------------------------------
 
-      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now(), interaction.guild.id);
       const pointMultiplier = doubleSagaEligible ? 2 : 1;
       const basePoints = difficultyPoints[selectedDifficulty] * pointMultiplier;
 
@@ -6112,7 +6112,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
       // CALCULATE PROVISIONAL POINTS
       // ------------------------------------
 
-      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now(), interaction.guild.id);
       const pointMultiplier = doubleSagaEligible ? 2 : 1;
       const basePoints = stratagemDifficultyPoints[difficulty] * pointMultiplier;
       const geneSeedBonus = (geneSeed === 'Yes' ? 1 : 0) * pointMultiplier;
@@ -6292,7 +6292,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         return;
       }
 
-      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now(), interaction.guild.id);
       const pointMultiplier = doubleSagaEligible ? 2 : 1;
       const basePoints = pvpResultPoints[result] * pointMultiplier;
       const squadBonus = participants.size > 1 ? 1 : 0;
@@ -6489,7 +6489,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
       const countedWaves = Math.floor(waves / 5) * 5;
       const completedWaveGroups = Math.floor(waves / 5);
-      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now(), interaction.guild.id);
       const pointMultiplier = doubleSagaEligible ? 2 : 1;
       const basePoints =
         completedWaveGroups * siegeDifficultyPoints[difficulty] * pointMultiplier;
