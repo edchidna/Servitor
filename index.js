@@ -6675,6 +6675,7 @@ async function startServitor() {
   await initializeCoreSchema();
   await initializeTrialSchema();
   await initializeHonorSchema();
+  await initializeDoubleSagaSchema();
   databaseReady = true;
 
   await client.login(process.env.DISCORD_TOKEN);
