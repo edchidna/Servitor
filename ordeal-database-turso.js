@@ -41,7 +41,7 @@ async function createSubmission(data) {
               waves_completed, base_points, bonus_points, total_points,
               double_saga_eligible, suspicious_flag, suspicious_details, status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       args: [
         data.submitterId, data.challengeKey, data.challengeName,
         data.gameMode, data.difficulty, data.rewardRoleId,
