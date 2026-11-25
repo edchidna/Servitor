@@ -3230,10 +3230,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : `${durationHours} ${durationHours === 1 ? 'hour' : 'hours'}`;
 
         const announcement =
-          `⚡ DOUBLE SAGA ACTIVATED!\\n` +
-          `⚔️ Operations · Stratagems · Siege · PVP · Hunts\\n` +
-          `⏳ Duration: ${durationLabel}\\n\\n` +
-          `Activated by: <@${interaction.user.id}>\\n` +
+          `⚡ DOUBLE SAGA ACTIVATED!\n` +
+          `⚔️ Operations · Stratagems · Siege · PVP · Hunts\n` +
+          `⏳ Duration: ${durationLabel}\n\n` +
+          `Activated by: <@${interaction.user.id}>\n` +
           `Expiration: <t:${Math.floor(endsAtMs / 1000)}:F>`;
 
         try {
