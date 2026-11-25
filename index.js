@@ -5820,11 +5820,13 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
       // CALCULATE PROVISIONAL POINTS
       // ------------------------------------
 
-      const basePoints = difficultyPoints[selectedDifficulty];
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const pointMultiplier = doubleSagaEligible ? 2 : 1;
+      const basePoints = difficultyPoints[selectedDifficulty] * pointMultiplier;
 
-      const geneSeedBonus = geneSeed === 'Yes' ? 1 : 0;
+      const geneSeedBonus = (geneSeed === 'Yes' ? 1 : 0) * pointMultiplier;
 
-      const armouryBonus = armouryData * 0.5;
+      const armouryBonus = armouryData * 0.5 * pointMultiplier;
 
       const squadBonus = participants.size > 1 ? 1 : 0;
 
@@ -5857,6 +5859,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         basePoints,
         bonusPoints,
         totalPoints,
+        doubleSagaEligible,
         participants: [...participants]
       });
 
@@ -6025,9 +6028,11 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
       // CALCULATE PROVISIONAL POINTS
       // ------------------------------------
 
-      const basePoints = stratagemDifficultyPoints[difficulty];
-      const geneSeedBonus = geneSeed === 'Yes' ? 1 : 0;
-      const armouryBonus = armouryData * 0.5;
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const pointMultiplier = doubleSagaEligible ? 2 : 1;
+      const basePoints = stratagemDifficultyPoints[difficulty] * pointMultiplier;
+      const geneSeedBonus = (geneSeed === 'Yes' ? 1 : 0) * pointMultiplier;
+      const armouryBonus = armouryData * 0.5 * pointMultiplier;
       const squadBonus = participants.size > 1 ? 1 : 0;
       const bonusPoints =
         geneSeedBonus + armouryBonus + squadBonus;
@@ -6054,6 +6059,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         basePoints,
         bonusPoints,
         totalPoints,
+        doubleSagaEligible,
         participants: [...participants]
       });
 
@@ -6202,7 +6208,9 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         return;
       }
 
-      const basePoints = pvpResultPoints[result];
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const pointMultiplier = doubleSagaEligible ? 2 : 1;
+      const basePoints = pvpResultPoints[result] * pointMultiplier;
       const squadBonus = participants.size > 1 ? 1 : 0;
       const bonusPoints = squadBonus;
       const totalPoints = basePoints + bonusPoints;
@@ -6222,6 +6230,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         basePoints,
         bonusPoints,
         totalPoints,
+        doubleSagaEligible,
         participants: [...participants]
       });
 
@@ -6396,8 +6405,10 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
 
       const countedWaves = Math.floor(waves / 5) * 5;
       const completedWaveGroups = Math.floor(waves / 5);
+      const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(Date.now());
+      const pointMultiplier = doubleSagaEligible ? 2 : 1;
       const basePoints =
-        completedWaveGroups * siegeDifficultyPoints[difficulty];
+        completedWaveGroups * siegeDifficultyPoints[difficulty] * pointMultiplier;
       const squadBonus = participants.size > 1 ? 1 : 0;
       const bonusPoints = squadBonus;
       const totalPoints = basePoints + bonusPoints;
@@ -6422,6 +6433,7 @@ await ordealDatabase.attachReviewMessage(submissionId, reviewMessage.id);
         basePoints,
         bonusPoints,
         totalPoints,
+        doubleSagaEligible,
         participants: [...participants]
       });
 
