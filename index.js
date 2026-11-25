@@ -1778,6 +1778,7 @@ function buildOrdealReviewContainer({
 async function buildAarApprovalResult(report, participants, reviewerId, guildId) {
 
   const reportData = JSON.parse(report.report_data);
+  const pointMultiplier = Number(report.double_saga_eligible) === 1 ? 2 : 1;
   const totalAwarded = report.total_points * participants.length;
   const memberTotals = await Promise.all(participants.map(async participant => {
     const newTotal = await sagaDatabase.getSagaPoints(guildId, participant.user_id);
@@ -1825,8 +1826,8 @@ async function buildAarApprovalResult(report, participants, reviewerId, guildId)
       `**Total Saga Points: ${formatAarPoints(report.total_points)} pts**`
     ].join('\n');
   } else {
-    const geneSeedBonus = reportData.geneSeed === 'Yes' ? 1 : 0;
-    const armouryBonus = Number(reportData.armouryData || 0) * 0.5;
+    const geneSeedBonus = (reportData.geneSeed === 'Yes' ? 1 : 0) * pointMultiplier;
+    const armouryBonus = Number(reportData.armouryData || 0) * 0.5 * pointMultiplier;
     const squadBonus = participants.length > 1 ? 1 : 0;
 
     scoreBreakdown = [
@@ -2413,6 +2414,7 @@ async function processReportReaction(reaction, user) {
     if (decision === 'approved') {
 
       const reportData = JSON.parse(report.report_data);
+      const pointMultiplier = Number(report.double_saga_eligible) === 1 ? 2 : 1;
 
       const totalAwarded =
         report.total_points * participants.length;
@@ -2501,10 +2503,10 @@ async function processReportReaction(reaction, user) {
       } else {
 
         const geneSeedBonus =
-          reportData.geneSeed === 'Yes' ? 1 : 0;
+          (reportData.geneSeed === 'Yes' ? 1 : 0) * pointMultiplier;
 
         const armouryBonus =
-          Number(reportData.armouryData || 0) * 0.5;
+          Number(reportData.armouryData || 0) * 0.5 * pointMultiplier;
 
         const squadBonus =
           participants.length > 1 ? 1 : 0;
