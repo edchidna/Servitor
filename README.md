@@ -392,7 +392,7 @@ The AAR panel's descriptive text should identify Administrators, Admins, NCOs, a
 
 ## Saga Points
 
-The following are the current formulas implemented in the regular AAR handlers. Points are calculated per participant and are awarded only after approval. Ordeals do not award Saga Points. Unproven Trials use their separate Pack Member reward rule.
+The following are the current formulas implemented in the regular AAR handlers. Points are calculated per participant and are awarded only after approval. Hunts award Saga Points using their configured challenge calculations. Unproven Trials use their separate Pack Member reward rule.
 
 ### Operations
 
@@ -640,7 +640,7 @@ The command generates a public profile card image containing the selected member
 
 The card is generated using Sharp and the background asset at `assets/saga-background.png`.
 
-Saga Points in the card reflect approved AAR and Trial scoring. Ordeals contribute no points. Approved Ordeal Gene Seed and Armoury Data resources can still contribute to their respective resource totals.
+Saga Points in the card reflect approved AAR, Hunt, Trial, and manual adjustment scoring. Approved Hunt Gene Seed and Armoury Data resources also contribute to their respective resource totals.
 
 Iron Wolves tenure tracking:
 
@@ -659,11 +659,12 @@ The bot maintains an all-time top-10 leaderboard in `LEADERBOARD_CHANNEL_ID`.
 The leaderboard includes:
 
 - Saga Points earned from approved regular AAR reports.
+- Approved Hunt submissions.
 - Approved Trial Pack Member points.
+- Manual Saga Point adjustments.
 
 It excludes:
 
-- Ordeal submissions, which award zero Saga Points.
 - Honor awards.
 - Rejected submissions.
 - Trial Completer progression, which is not a Saga Points award.
@@ -758,7 +759,7 @@ These checks do not start a live Discord bot or verify server permissions, role 
 
 The following are operational limitations or implementation details worth understanding. They are not claims that the features are missing.
 
-1. **Ordeal scoring:** The legacy `ordeal_score_ledger` table and legacy point-related columns may remain in the database for compatibility. Current Ordeal approvals do not award Saga Points or contribute to the leaderboard.
+1. **Hunt scoring:** Approved Hunt submissions award per-participant Saga Points through `ordeal_score_ledger` and contribute to the leaderboard.
 2. **Trial preview and approval:** Eligible Pack Members receive +2 Saga Points at approval, not +3. Members who still have the Unproven role at review receive zero.
 3. **AAR panel description:** The AAR review permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators/High Command. The panel description should reflect all four accepted permission paths.
 4. **No npm test script:** `test-operations-modal.js` is a standalone focused test, not a complete automated test suite.
