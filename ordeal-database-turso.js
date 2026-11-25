@@ -38,15 +38,17 @@ async function createSubmission(data) {
               submitter_id, challenge_key, challenge_name, game_mode,
               difficulty, reward_role_id, operation_name,
               challenge_completers, participants, gene_seed, armoury_data,
-              base_points, bonus_points, total_points, suspicious_flag,
-              suspicious_details, status
+              waves_completed, base_points, bonus_points, total_points,
+              double_saga_eligible, suspicious_flag, suspicious_details, status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, 'pending')`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       args: [
         data.submitterId, data.challengeKey, data.challengeName,
         data.gameMode, data.difficulty, data.rewardRoleId,
         data.operationName, JSON.stringify(data.completers),
         JSON.stringify(data.participants), data.geneSeed, data.armouryData,
+        data.wavesCompleted || 0, data.basePoints, data.bonusPoints,
+        data.totalPoints, data.doubleSagaEligible ? 1 : 0,
         data.suspiciousFlag, JSON.stringify(data.suspiciousDetails)
       ]
     });
@@ -108,6 +110,13 @@ async function deletePendingSubmission(submissionId) {
 
 async function saveDecision(submissionId, moderatorId, decision) {
   return database.withTransaction(async tx => {
+    const submissionResult = await tx.execute({
+      sql: 'SELECT participants, total_points FROM ordeal_submissions WHERE id = ? AND status = \'pending\'',
+      args: [submissionId]
+    });
+    const submission = submissionResult.rows[0];
+    if (!submission) return false;
+
     const updated = await tx.execute({
       sql: `UPDATE ordeal_submissions
             SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
@@ -115,6 +124,18 @@ async function saveDecision(submissionId, moderatorId, decision) {
       args: [decision, moderatorId, submissionId]
     });
     if (Number(updated.rowsAffected) !== 1) return false;
+
+    if (decision === 'approved') {
+      const participants = JSON.parse(submission.participants || '[]');
+      const points = Number(submission.total_points || 0);
+      for (const userId of participants) {
+        await tx.execute({
+          sql: 'INSERT INTO ordeal_score_ledger (submission_id, user_id, points) VALUES (?, ?, ?)',
+          args: [submissionId, userId, points]
+        });
+      }
+    }
+
     await tx.execute({
       sql: `INSERT INTO ordeal_audit_log (submission_id, moderator_id, decision)
             VALUES (?, ?, ?)`,
