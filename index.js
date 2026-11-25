@@ -4824,13 +4824,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // READ ORDEAL FORM ANSWERS
       // ----------------------------------
 
-      const geneSeed = interaction.fields
-        .getStringSelectValues('ordeal_gene_seed')[0];
+      const geneSeed = ordeal.gameMode === 'Stratagems'
+        ? interaction.fields.getStringSelectValues('ordeal_gene_seed')[0]
+        : 'No';
 
-      const armouryData = Number(
-        interaction.fields
-          .getStringSelectValues('ordeal_armoury_data')[0]
-      );
+      const armouryData = ordeal.gameMode === 'Stratagems'
+        ? Number(interaction.fields.getStringSelectValues('ordeal_armoury_data')[0])
+        : 0;
+
+      const wavesCompleted = ordeal.gameMode === 'Siege'
+        ? Number(interaction.fields.getTextInputValue('ordeal_waves'))
+        : 0;
 
       const completerIds = [
         ...new Set(workflow.completerIds || [])
@@ -4945,7 +4949,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (!['Yes', 'No'].includes(geneSeed)) {
+      if (
+        gameMode === 'Stratagems' &&
+        !['Yes', 'No'].includes(geneSeed)
+      ) {
         await interaction.reply({
           content: 'The Gene Seed selection is invalid. Please start again.',
           flags: MessageFlags.Ephemeral
@@ -4954,12 +4961,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (
-        !Number.isInteger(armouryData) ||
-        armouryData < 0 ||
-        armouryData > 3
+        gameMode === 'Stratagems' &&
+        (!Number.isInteger(armouryData) || armouryData < 0 || armouryData > 3)
       ) {
         await interaction.reply({
           content: 'The Armoury Data selection is invalid. Please start again.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      if (
+        gameMode === 'Siege' &&
+        (!Number.isSafeInteger(wavesCompleted) || wavesCompleted < 1)
+      ) {
+        await interaction.reply({
+          content: 'Enter a valid positive whole number of waves completed.',
           flags: MessageFlags.Ephemeral
         });
         return;
@@ -5140,6 +5157,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // SAVE COMPLETE SUBMISSION
         // ----------------------------------
 
+        const submittedAtMs = Date.now();
+        const doubleSagaEligible = await doubleSagaDatabase.isActiveAt(submittedAtMs);
+        const pointMultiplier = doubleSagaEligible ? 2 : 1;
+        const packBonus = participants.length > 1 ? 1 : 0;
+
+        const basePoints = gameMode === 'Siege'
+          ? Math.floor(wavesCompleted / 5) * 5 * pointMultiplier
+          : 6 * pointMultiplier;
+
+        const resourceBonus = gameMode === 'Stratagems'
+          ? ((geneSeed === 'Yes' ? 1 : 0) + (armouryData * 0.5)) * pointMultiplier
+          : 0;
+
+        const bonusPoints = resourceBonus + packBonus;
+        const totalPoints = basePoints + bonusPoints;
+
         submissionId = await ordealDatabase.createSubmission({
           submitterId: interaction.user.id,
           challengeKey: ordeal.key,
@@ -5152,6 +5185,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           participants,
           geneSeed,
           armouryData,
+          wavesCompleted,
+          basePoints,
+          bonusPoints,
+          totalPoints,
+          doubleSagaEligible,
           suspiciousFlag,
           suspiciousDetails
         });
