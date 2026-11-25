@@ -3171,6 +3171,88 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
 
       // ======================================
+      // DOUBLE SAGA ACTIVATION
+      // ======================================
+
+      if (interaction.commandName === 'double') {
+
+        if (!interaction.guild || !interaction.channel?.isSendable()) {
+          await interaction.reply({
+            content: 'Double Saga can only be activated in a server text channel.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        const isAuthorized =
+          member.roles.cache.has('1569256588689281105') ||
+          member.roles.cache.has('1570671088290111488');
+
+        if (!isAuthorized) {
+          await interaction.editReply({
+            content: 'Only the Great Wolf or High Wolf Lord can activate Double Saga.'
+          });
+          return;
+        }
+
+        const durationHours = interaction.options.getInteger('duration_hours', true);
+        if (!Number.isSafeInteger(durationHours) || durationHours < 1) {
+          await interaction.editReply({
+            content: 'Enter a duration of at least 1 hour.'
+          });
+          return;
+        }
+
+        const now = Date.now();
+        const existingEvent = await doubleSagaDatabase.getActiveEvent(now);
+        if (existingEvent) {
+          await interaction.editReply({
+            content: `Double Saga is already active and expires <t:${Math.floor(Number(existingEvent.ends_at_ms) / 1000)}:F>.`
+          });
+          return;
+        }
+
+        const endsAtMs = now + durationHours * 60 * 60 * 1000;
+        const eventId = await doubleSagaDatabase.createEvent({
+          guildId: interaction.guild.id,
+          activatedBy: interaction.user.id,
+          channelId: interaction.channel.id,
+          durationHours,
+          startsAtMs: now,
+          endsAtMs
+        });
+
+        const durationLabel = durationHours % 24 === 0
+          ? `${durationHours} hours (${durationHours / 24} ${durationHours / 24 === 1 ? 'day' : 'days'})`
+          : `${durationHours} ${durationHours === 1 ? 'hour' : 'hours'}`;
+
+        const announcement =
+          `⚡ DOUBLE SAGA ACTIVATED!\\n` +
+          `⚔️ Operations · Stratagems · Siege · PVP · Hunts\\n` +
+          `⏳ Duration: ${durationLabel}\\n\\n` +
+          `Activated by: <@${interaction.user.id}>\\n` +
+          `Expiration: <t:${Math.floor(endsAtMs / 1000)}:F>`;
+
+        try {
+          await interaction.channel.send({
+            content: announcement,
+            allowedMentions: { users: [interaction.user.id] }
+          });
+        } catch (error) {
+          await doubleSagaDatabase.cancelEvent(eventId);
+          throw error;
+        }
+
+        await interaction.editReply({
+          content: `Double Saga activated successfully in ${interaction.channel}.`
+        });
+        return;
+      }
+
+      // ======================================
       // MANUAL SAGA POINT COMMAND
       // ======================================
 
