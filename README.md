@@ -145,7 +145,7 @@ The main bot checks its required variables at startup. The command deployment sc
 | `SHADOW_WOLF_ROLE_ID` | Shadow Wolf role granted to approved challenge completers |
 | `MAELSTROM_SURVIVOR_ROLE_ID` | Maelstrom Survivor role granted to approved challenge completers |
 
-A Hunt without its configured reward role is not available for selection. The legacy `LONE_WOLF_ROLE_ID` and `DOUBLE_TROUBLE_ROLE_ID` variables are accepted as temporary fallbacks for the two replacement challenge keys.
+A Hunt without its configured reward role is not available for selection. The legacy `LONE_WOLF_ROLE_ID` and `DOUBLE_TROUBLE_ROLE_ID` variables are no longer used.
 
 ### `.env` template
 
