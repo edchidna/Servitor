@@ -140,10 +140,12 @@ The main bot checks its required variables at startup. The command deployment sc
 
 | Variable | Purpose |
 |---|---|
-| `LONE_WOLF_ROLE_ID` | Reward role granted for an approved Lone Wolf Ordeal |
-| `DOUBLE_TROUBLE_ROLE_ID` | Reward role granted for an approved Double Trouble Ordeal |
+| `SIEGE_OF_FENRIS_ROLE_ID` | Defender of Fenris role granted to approved challenge completers |
+| `HUNT_FOR_THE_WULFEN_ROLE_ID` | Wulfen Savior role granted to approved challenge completers |
+| `SHADOW_WOLF_ROLE_ID` | Shadow Wolf role granted to approved challenge completers |
+| `MAELSTROM_SURVIVOR_ROLE_ID` | Maelstrom Survivor role granted to approved challenge completers |
 
-An Ordeal challenge without its configured reward role is not available for selection.
+A Hunt without its configured reward role is not available for selection. The legacy `LONE_WOLF_ROLE_ID` and `DOUBLE_TROUBLE_ROLE_ID` variables are accepted as temporary fallbacks for the two replacement challenge keys.
 
 ### `.env` template
 
@@ -173,9 +175,11 @@ UNPROVEN_ROLE_ID=YOUR_UNPROVEN_ROLE_ID
 TRIAL_PANEL_CHANNEL_ID=YOUR_TRIAL_PANEL_CHANNEL_ID
 TRIAL_REVIEW_CHANNEL_ID=YOUR_TRIAL_REVIEW_CHANNEL_ID
 
-# Optional Ordeal reward roles
-LONE_WOLF_ROLE_ID=YOUR_LONE_WOLF_REWARD_ROLE_ID
-DOUBLE_TROUBLE_ROLE_ID=YOUR_DOUBLE_TROUBLE_REWARD_ROLE_ID
+# Hunt reward roles
+SIEGE_OF_FENRIS_ROLE_ID=YOUR_DEFENDER_OF_FENRIS_ROLE_ID
+HUNT_FOR_THE_WULFEN_ROLE_ID=YOUR_WULFEN_SAVIOR_ROLE_ID
+SHADOW_WOLF_ROLE_ID=YOUR_SHADOW_WOLF_ROLE_ID
+MAELSTROM_SURVIVOR_ROLE_ID=YOUR_MAELSTROM_SURVIVOR_ROLE_ID
 ```
 
 To obtain a channel or role ID in Discord, enable Developer Mode in Discord's Advanced settings, then use the context menu's **Copy ID** option.
@@ -234,6 +238,7 @@ Current commands:
 | `/sagahistory [member]` | Displays a member's Saga History profile card |
 | `/sagapoint add` | Adds Saga Points to a member with a required reason |
 | `/sagapoint deduct` | Deducts Saga Points from a member with a required reason |
+| `/double saga duration_hours` | Activates Double Saga for the requested number of hours; restricted to Great Wolf and High Wolf Lord |
 | `/honor give` | Awards an Honor to a member |
 | `/honor remove` | Revokes an active Honor |
 | `/honor list [member]` | Shows a member's active Honors |
@@ -444,50 +449,58 @@ The squad bonus is +1 when the report has more than one participant. For example
 
 A +1 squad bonus applies when the report has more than one participant.
 
-## Ordeals
+## Hunts
 
-Ordeals are a separate challenge-completion workflow with their own review channel and reward roles. They are not regular AAR submissions.
+Hunts are a separate challenge-completion workflow with their own review channel and reward roles. They remain separate from regular AAR submissions.
 
-**Ordeals award zero Saga Points. They do not contribute to the Saga Points leaderboard.**
+All four Hunts award Saga Points to every registered participant after approval. The usual +1 Pack Bonus applies when more than one participant is registered. Only actual challenge completers receive the challenge-specific Discord reward role.
 
 ### Configured challenges
 
-| Challenge | Game mode | Difficulty | Reward role variable |
+| Hunt | Game mode | Difficulty | Reward role variable |
 |---|---|---|---|
-| Lone Wolf | Operations | Absolute | `LONE_WOLF_ROLE_ID` |
-| Double Trouble | Stratagems | Hard | `DOUBLE_TROUBLE_ROLE_ID` |
+| The Siege of Fenris | Siege | Hard | `SIEGE_OF_FENRIS_ROLE_ID` |
+| The Hunt for The Wulfen | Stratagems | Hard | `HUNT_FOR_THE_WULFEN_ROLE_ID` |
+| The Shadow Wolf | Stratagems | Hard | `SHADOW_WOLF_ROLE_ID` |
+| The Battle of Maelstrom’s Maw | Stratagems | Hard | `MAELSTROM_SURVIVOR_ROLE_ID` |
 
-A challenge is selectable only when its corresponding reward role is configured.
+A Hunt is selectable only when its corresponding reward role is configured.
 
 ### Submission
 
-The multi-step workflow collects challenge completers, any additional participants, and challenge details. The submitter is automatically included as a participant.
+The multi-step workflow collects challenge completers, additional Pack Members, challenge details, and evidence. The submitter is automatically included as a participant.
 
-Depending on the challenge, the form collects:
+- The Siege of Fenris collects the number of waves completed.
+- The other three Hunts collect Gene Seed (Yes/No) and Armoury Data (0–3).
+- One to six evidence files are required (10 MB maximum per file).
+- A squad contains between one and three unique participants. Challenge completers must be included among the participants.
 
-- Operation name for Operations-based challenges.
-- Gene Seed: Yes or No.
-- Armoury Data: 0–3.
-- One to six evidence files (10 MB maximum per file).
+### Saga Points
 
-A squad must contain between one and three unique participants. Challenge completers must be included among the participants; the submitter and completers cannot be selected again as additional teammates.
+The Siege of Fenris uses the Hard Siege calculation:
+
+`floor(waves completed / 5) × 5 + Pack Bonus`
+
+The other three Hunts use the Hard Stratagems calculation:
+
+`6 + Gene Seed bonus + (Armoury Data × 0.5) + Pack Bonus`
+
+Each completed five-wave milestone awards 5 base points. Gene Seed Yes awards +1 point. Each Armoury Data awards +0.5 points. The Pack Bonus is +1 when the squad has more than one participant.
+
+When Double Saga is active at submission time, the eligible base and resource bonus components are doubled. The Pack Bonus is not doubled. Eligibility is saved with the submission, so a Hunt submitted during Double Saga keeps its doubled points if it is approved after the event expires.
 
 ### Review and rewards
 
-- Submissions are sent to `ORDEAL_REVIEW_CHANNEL_ID`.
+- Submissions are sent to `ORDEAL_REVIEW_CHANNEL_ID` (the dedicated `#ordeal-completion` channel).
 - Reviews use ✅ to approve and ❌ to reject.
 - The reviewer permission check accepts Discord Administrators, configured Admins, NCOs, and AAR Moderators/High Command.
-- The submitter and registered participants cannot review their own Ordeal submission.
+- The submitter and registered participants cannot review their own submission.
 - Suspicious participant overlap is flagged for manual attention and can generate an alert in `NCO_REVIEW_CHANNEL_ID`.
-- On approval, the configured challenge reward role is granted to the challenge completer(s), subject to Discord role permissions and hierarchy.
-- On rejection, no reward role is granted.
-- The review decision is recorded in the Ordeal audit log.
+- On approval, every registered participant receives the Hunt's per-participant Saga Points; the configured reward role is granted only to the challenge completer(s).
+- Approved Hunt points count toward Saga Points totals and the leaderboard.
+- On rejection, no Saga Points or reward role are granted.
 
-Ordeal submissions do not create Saga Points ledger entries or trigger a leaderboard reward. The legacy `ordeal_score_ledger` table may remain in the database for compatibility, but it is not used for current scoring or leaderboard calculations.
-
-Gene Seed and Armoury Data recorded through approved Ordeals can still be included separately in Saga History resource totals. These resources are not Saga Points.
-
-After a decision, the original Ordeal evidence thread is deleted. The review card and its audit information remain.
+Gene Seed and Armoury Data recorded through approved Hunts are also included in Saga History resource totals.
 
 ## Unproven Trial system
 
