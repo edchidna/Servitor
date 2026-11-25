@@ -24,6 +24,11 @@ async function getLeaderboardScores() {
             INNER JOIN trial_submissions ts ON ts.id = tsl.submission_id
             WHERE ts.status = 'approved'
             UNION ALL
+            SELECT osl.user_id, osl.points
+            FROM ordeal_score_ledger osl
+            INNER JOIN ordeal_submissions os ON os.id = osl.submission_id
+            WHERE os.status = 'approved'
+            UNION ALL
             SELECT user_id, points_delta AS points
             FROM saga_point_adjustments
           )
