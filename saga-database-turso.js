@@ -19,11 +19,16 @@ async function applySagaAdjustment({
               INNER JOIN trial_submissions ts ON ts.id = tsl.submission_id
               WHERE ts.status = 'approved' AND tsl.user_id = ?
               UNION ALL
+              SELECT osl.points
+              FROM ordeal_score_ledger osl
+              INNER JOIN ordeal_submissions os ON os.id = osl.submission_id
+              WHERE os.status = 'approved' AND osl.user_id = ?
+              UNION ALL
               SELECT spa.points_delta AS points
               FROM saga_point_adjustments spa
               WHERE spa.guild_id = ? AND spa.user_id = ?
             )`,
-      args: [userId, userId, guildId, userId]
+      args: [userId, userId, userId, guildId, userId]
     });
     const currentBalance = Math.max(0, Number(balanceResult.rows[0]?.total_points || 0));
     const appliedPoints = action === 'deduct'
@@ -59,10 +64,14 @@ async function getSagaPoints(guildId, userId) {
             INNER JOIN trial_submissions ts ON ts.id = tsl.submission_id
             WHERE ts.status = 'approved' AND tsl.user_id = ?
             UNION ALL
+            SELECT osl.points FROM ordeal_score_ledger osl
+            INNER JOIN ordeal_submissions os ON os.id = osl.submission_id
+            WHERE os.status = 'approved' AND osl.user_id = ?
+            UNION ALL
             SELECT points_delta AS points FROM saga_point_adjustments
             WHERE guild_id = ? AND user_id = ?
           )`,
-    args: [userId, userId, guildId, userId]
+    args: [userId, userId, userId, guildId, userId]
   });
   return Number(result.rows[0]?.total_points || 0);
 }
