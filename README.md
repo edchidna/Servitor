@@ -125,7 +125,7 @@ The bot reads configuration from `.env`.
 | `REVIEW_CHANNEL_ID` | Channel receiving Operations, Stratagems, Siege, and PVP reports for review |
 | `LEADERBOARD_CHANNEL_ID` | Channel where the persistent Saga Points leaderboard is posted or updated |
 | `MODERATOR_ROLE_ID` | AAR Moderator / High Command role used by review and Honor management permission checks |
-| `ORDEAL_REVIEW_CHANNEL_ID` | Dedicated channel for Ordeal completion reviews |
+| `ORDEAL_REVIEW_CHANNEL_ID` | Dedicated `#ordeal-completion` channel for Hunt completion reviews |
 | `NCO_REVIEW_CHANNEL_ID` | Channel receiving Trial/role discrepancy alerts and Ordeal review alerts |
 | `ADMIN_ROLE_ID` | Configured Admin role used by review and management permission checks |
 | `NCO_ROLE_ID` | NCO role used by AAR/Trial review checks and Trial Pack Member eligibility |
@@ -448,6 +448,12 @@ The squad bonus is +1 when the report has more than one participant. For example
 | Defeat | 1 |
 
 A +1 squad bonus applies when the report has more than one participant.
+
+### Double Saga
+
+The `/double saga duration_hours` command activates Double Saga for the requested number of hours. Only Great Wolf and High Wolf Lord can activate it. The event's start and expiration timestamps are stored in Turso, so it remains accurate across bot restarts and redeployments. The public activation announcement uses a Discord timestamp, which displays in each member's local timezone.
+
+Double Saga applies to Operations, Stratagems, Siege, PVP, and Hunts. It doubles eligible base points and the Gene Seed/Armoury Data bonuses; the +1 Pack Bonus is not doubled. Trials are excluded. Eligibility is determined when the report is submitted and is saved with the submission, so a qualifying report keeps its doubled points if approval happens after the event expires.
 
 ## Hunts
 
