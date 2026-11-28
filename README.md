@@ -512,7 +512,7 @@ Gene Seed and Armoury Data recorded through approved Hunts are also included in 
 
 ## Unproven Trial system
 
-Unproven Trials are separate from Ordeals. They track completion of three distinct Trials and handle graduation into the Iron Wolves role.
+Unproven Trials are separate from Ordeals. They track completion of three distinct Trials and handle graduation by removing the Unproven role and granting both Iron Wolves and Pack-Brother roles.
 
 ### Panel and submission
 
