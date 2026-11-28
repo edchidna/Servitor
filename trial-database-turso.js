@@ -247,6 +247,20 @@ async function getTrialSubmission(submissionId) {
   };
 }
 
+async function getGraduatedMemberIds() {
+  const result = await database.execute({
+    sql: `
+      SELECT user_id
+      FROM trial_progress
+      GROUP BY user_id
+      HAVING COUNT(DISTINCT trial_key) = 3
+      ORDER BY user_id
+    `
+  });
+
+  return result.rows.map(row => validateUserId(row.user_id, 'graduated user ID'));
+}
+
 async function getMemberTrialProgress(userId) {
   userId = validateUserId(userId, 'userId');
   const result = await database.execute({
@@ -512,6 +526,7 @@ module.exports = {
   createTrialSubmission,
   getTrialSubmission,
   getMemberTrialProgress,
+  getGraduatedMemberIds,
   reviewTrialSubmission,
   setTrialDiscordReferences,
   deletePendingTrialSubmission
