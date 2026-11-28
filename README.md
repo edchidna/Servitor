@@ -130,6 +130,7 @@ The bot reads configuration from `.env`.
 | `ADMIN_ROLE_ID` | Configured Admin role used by review and management permission checks |
 | `NCO_ROLE_ID` | NCO role used by AAR/Trial review checks and Trial Pack Member eligibility |
 | `IRON_WOLVES_ROLE_ID` | Role granted on Trial graduation and tracked for Saga History tenure |
+| `PACK_BROTHER_ROLE_ID` | Additional role granted on Trial graduation |
 | `TRIAL_PANEL_CHANNEL_ID` | Channel where the Unproven Trial panel is published |
 | `TRIAL_REVIEW_CHANNEL_ID` | Dedicated channel for Unproven Trial submission reviews |
 | `UNPROVEN_ROLE_ID` | Role tracked for Trial eligibility and removed on graduation |
@@ -170,6 +171,7 @@ NCO_REVIEW_CHANNEL_ID=YOUR_NCO_ALERT_CHANNEL_ID
 ADMIN_ROLE_ID=YOUR_ADMIN_ROLE_ID
 NCO_ROLE_ID=YOUR_NCO_ROLE_ID
 IRON_WOLVES_ROLE_ID=YOUR_IRON_WOLVES_ROLE_ID
+PACK_BROTHER_ROLE_ID=1572246418679271424
 UNPROVEN_ROLE_ID=YOUR_UNPROVEN_ROLE_ID
 
 TRIAL_PANEL_CHANNEL_ID=YOUR_TRIAL_PANEL_CHANNEL_ID
@@ -212,7 +214,7 @@ Configure the bot so it can perform the actions enabled in your server. Dependin
 - Creating threads and sending messages in threads.
 - Managing roles for Ordeal rewards and Trial graduation.
 
-The bot's highest role must be above the roles it needs to grant or remove, including the configured Ordeal reward roles, `UNPROVEN_ROLE_ID`, and `IRON_WOLVES_ROLE_ID`.
+The bot's highest role must be above the roles it needs to grant or remove, including the configured Ordeal reward roles, `UNPROVEN_ROLE_ID`, `IRON_WOLVES_ROLE_ID`, and `PACK_BROTHER_ROLE_ID`.
 
 Create the configured channels and roles before starting the bot. Make sure each environment variable contains the ID of the correct server resource.
 
@@ -315,7 +317,7 @@ Available Operations are:
 
 The submitter selects:
 
-- Difficulty: Normal or Hard.
+- Difficulty: Substantial or Absolute.
 - Gene Seed: Yes or No.
 - Armoury Data: 0–3.
 - Up to two additional squad members.
@@ -327,7 +329,7 @@ The submitter is automatically included. Maximum squad size is three.
 
 The submitter enters:
 
-- Difficulty: Normal or Hard.
+- Difficulty: Substantial or Absolute.
 - A positive whole number of waves completed.
 - Up to two additional squad members.
 - One to six evidence files (10 MB maximum per file).
@@ -416,8 +418,8 @@ Bonuses:
 
 | Difficulty | Base points |
 |---|---:|
-| Normal | 5 |
-| Hard | 6 |
+| Substantial | 5 |
+| Absolute | 6 |
 
 Bonuses:
 
@@ -431,8 +433,8 @@ Base points are awarded for each completed group of five waves:
 
 | Difficulty | Points per completed 5-wave group |
 |---|---:|
-| Normal | 3 |
-| Hard | 5 |
+| Substantial | 3 |
+| Absolute | 5 |
 
 Formula:
 
@@ -465,10 +467,10 @@ All four Hunts award Saga Points to every registered participant after approval.
 
 | Hunt | Game mode | Difficulty | Reward role variable |
 |---|---|---|---|
-| The Siege of Fenris | Siege | Hard | `SIEGE_OF_FENRIS_ROLE_ID` |
-| The Hunt for The Wulfen | Stratagems | Hard | `HUNT_FOR_THE_WULFEN_ROLE_ID` |
-| The Shadow Wolf | Stratagems | Hard | `SHADOW_WOLF_ROLE_ID` |
-| The Battle of Maelstrom’s Maw | Stratagems | Hard | `MAELSTROM_SURVIVOR_ROLE_ID` |
+| The Siege of Fenris | Siege | Absolute | `SIEGE_OF_FENRIS_ROLE_ID` |
+| The Hunt for The Wulfen | Stratagems | Absolute | `HUNT_FOR_THE_WULFEN_ROLE_ID` |
+| The Shadow Wolf | Stratagems | Absolute | `SHADOW_WOLF_ROLE_ID` |
+| The Battle of Maelstrom’s Maw | Stratagems | Absolute | `MAELSTROM_SURVIVOR_ROLE_ID` |
 
 A Hunt is selectable only when its corresponding reward role is configured.
 
@@ -483,11 +485,11 @@ The multi-step workflow collects challenge completers, additional Pack Members, 
 
 ### Saga Points
 
-The Siege of Fenris uses the Hard Siege calculation:
+The Siege of Fenris uses the Absolute Siege calculation:
 
 `floor(waves completed / 5) × 5 + Pack Bonus`
 
-The other three Hunts use the Hard Stratagems calculation:
+The other three Hunts use the Absolute Stratagems calculation:
 
 `6 + Gene Seed bonus + (Armoury Data × 0.5) + Pack Bonus`
 
@@ -549,7 +551,8 @@ Self-review is prohibited: the Trial submitter, Trial Completers, and Pack Membe
 - Each approved Trial adds progress for the selected Trial key to each Trial Completer.
 - Repeated completion of the same Trial key does not add duplicate progress.
 - A member graduates after completing all three distinct Trial keys.
-- On graduation, the bot attempts to remove `UNPROVEN_ROLE_ID` and grant `IRON_WOLVES_ROLE_ID`.
+- On graduation, the bot removes `UNPROVEN_ROLE_ID` and grants both `IRON_WOLVES_ROLE_ID` and `PACK_BROTHER_ROLE_ID`.
+- The same role reconciliation runs at startup for members who had already completed all three Trials before the update.
 - Existing Iron Wolves tenure is preserved rather than reset when the member already has a tenure record.
 - The bot prevents the Unproven role from being re-added to a member who has already graduated.
 - Role update failures are reported to `NCO_REVIEW_CHANNEL_ID`.
@@ -741,7 +744,7 @@ These checks do not start a live Discord bot or verify server permissions, role 
 
 ### Trial reviews or graduation roles do not work
 
-- Verify `TRIAL_REVIEW_CHANNEL_ID`, `UNPROVEN_ROLE_ID`, and `IRON_WOLVES_ROLE_ID`.
+- Verify `TRIAL_REVIEW_CHANNEL_ID`, `UNPROVEN_ROLE_ID`, `IRON_WOLVES_ROLE_ID`, and `PACK_BROTHER_ROLE_ID`.
 - Confirm the reviewer has an accepted Trial review permission.
 - Confirm the bot has Manage Roles permission.
 - Move the bot's highest role above the roles it must grant or remove.
