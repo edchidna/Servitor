@@ -40,6 +40,7 @@ const NCO_ROLE_ID = process.env.NCO_ROLE_ID;
 const ADMIN_ROLE_ID = process.env.ADMIN_ROLE_ID;
 const MODERATOR_ROLE_ID = process.env.MODERATOR_ROLE_ID;
 const IRON_WOLVES_ROLE_ID = process.env.IRON_WOLVES_ROLE_ID;
+const PACK_BROTHER_ROLE_ID = process.env.PACK_BROTHER_ROLE_ID;
 
 const TRIAL_BUTTON_ID = 'trial_open_form';
 const TRIAL_MODAL_ID = 'trial_submission_form';
@@ -56,7 +57,8 @@ const requiredTrialVariables = [
     'NCO_ROLE_ID',
     'ADMIN_ROLE_ID',
     'MODERATOR_ROLE_ID',
-    'IRON_WOLVES_ROLE_ID'
+    'IRON_WOLVES_ROLE_ID',
+    'PACK_BROTHER_ROLE_ID'
 ];
 
 for (const variable of requiredTrialVariables) {
@@ -1202,6 +1204,51 @@ async function processTrialReviewDecision(interaction) {
                         );
                     }
                 }
+
+                // ------------------------------------------
+                // GRANT PACK-BROTHER ROLE
+                // ------------------------------------------
+
+                try {
+                    const member = await interaction.guild.members.fetch(award.userId);
+
+                    if (!memberHasRole(member, PACK_BROTHER_ROLE_ID)) {
+                        await member.roles.add(
+                            PACK_BROTHER_ROLE_ID,
+                            'Graduated from all three Unproven Trials'
+                        );
+                    }
+
+                    console.log(
+                        `[Pack-Brother] Graduation reward processed for ${member.user.tag}.`
+                    );
+
+                } catch (error) {
+                    console.error(
+                        `[Trial Review] Could not grant Pack-Brother role to ${award.userId}:`,
+                        error
+                    );
+
+                    followUpIssues.push(
+                        `Could not grant the Pack-Brother role to <@${award.userId}>.`
+                    );
+
+                    try {
+                        await sendTrialDiscrepancyAlert(interaction.client, {
+                            title: 'Trial Graduation Pack-Brother Role Grant Failed',
+                            description:
+                                `The member <@${award.userId}> completed all three Unproven Trials, ` +
+                                'but the bot could not grant their Pack-Brother role.',
+                            userId: award.userId,
+                            reason: 'Failed to grant Pack-Brother role after graduation.'
+                        });
+                    } catch (alertError) {
+                        console.error(
+                            `[Trial Review] Could not send Pack-Brother failure alert for ${award.userId}:`,
+                            alertError
+                        );
+                    }
+                }
             }
 
             // Refresh the combined Saga Points leaderboard.
@@ -1491,6 +1538,111 @@ async function handleTrialReviewReaction(reaction, user) {
         }
     }
 }
+async function reconcileGraduatedMembers(guild) {
+    const graduatedUserIds = await trialDatabase.getGraduatedMemberIds();
+    let processed = 0;
+
+    for (const userId of graduatedUserIds) {
+        let member;
+
+        try {
+            member = await guild.members.fetch(userId);
+        } catch (error) {
+            console.warn(
+                `[Trial Graduation] Could not fetch graduated member ${userId} in ${guild.name}; skipping role reconciliation.`,
+                error.message
+            );
+            continue;
+        }
+
+        try {
+            if (memberHasRole(member, UNPROVEN_ROLE_ID)) {
+                await member.roles.remove(
+                    UNPROVEN_ROLE_ID,
+                    'Member has completed all three Unproven Trials'
+                );
+            }
+        } catch (error) {
+            console.error(
+                `[Trial Graduation] Could not remove Unproven role from ${userId}:`,
+                error
+            );
+            try {
+                await sendTrialDiscrepancyAlert(member.client, {
+                    title: 'Trial Graduation Unproven Role Removal Failed',
+                    description: `The graduated member <@${userId}> still has the Unproven role.`,
+                    userId,
+                    reason: 'Failed to remove Unproven role during graduation reconciliation.'
+                });
+            } catch (alertError) {
+                console.error('[Trial Graduation] Could not send Unproven role alert:', alertError);
+            }
+        }
+
+        try {
+            if (!memberHasRole(member, IRON_WOLVES_ROLE_ID)) {
+                await member.roles.add(
+                    IRON_WOLVES_ROLE_ID,
+                    'Graduated from all three Unproven Trials'
+                );
+            }
+
+            // Preserve any existing tenure timestamp.
+            await database.execute({
+                sql: 'INSERT OR IGNORE INTO iron_wolves_tenure (guild_id, user_id, assigned_at) VALUES (?, ?, ?)',
+                args: [guild.id, member.id, new Date().toISOString()]
+            });
+        } catch (error) {
+            console.error(
+                `[Trial Graduation] Could not ensure Iron Wolves role for ${userId}:`,
+                error
+            );
+            try {
+                await sendTrialDiscrepancyAlert(member.client, {
+                    title: 'Trial Graduation Iron Wolves Role Grant Failed',
+                    description: `The graduated member <@${userId}> could not be assigned the Iron Wolves role or have their tenure checked.`,
+                    userId,
+                    reason: 'Failed to reconcile Iron Wolves role or tenure.'
+                });
+            } catch (alertError) {
+                console.error('[Trial Graduation] Could not send Iron Wolves role alert:', alertError);
+            }
+        }
+
+        try {
+            if (!memberHasRole(member, PACK_BROTHER_ROLE_ID)) {
+                await member.roles.add(
+                    PACK_BROTHER_ROLE_ID,
+                    'Graduated from all three Unproven Trials'
+                );
+            }
+        } catch (error) {
+            console.error(
+                `[Trial Graduation] Could not ensure Pack-Brother role for ${userId}:`,
+                error
+            );
+            try {
+                await sendTrialDiscrepancyAlert(member.client, {
+                    title: 'Trial Graduation Pack-Brother Role Grant Failed',
+                    description: `The graduated member <@${userId}> could not be assigned the Pack-Brother role.`,
+                    userId,
+                    reason: 'Failed to reconcile Pack-Brother role.'
+                });
+            } catch (alertError) {
+                console.error('[Trial Graduation] Could not send Pack-Brother role alert:', alertError);
+            }
+        }
+
+        processed++;
+    }
+
+    console.log(
+        `[Trial Graduation] Reconciled graduation roles for ${processed} of ${graduatedUserIds.length} graduated members in ${guild.name}.`
+    );
+
+    return { total: graduatedUserIds.length, processed };
+}
+
 async function handleTrialMemberUpdate(oldMember, newMember) {
     try {
         // Only act when the Unproven role has just been added.
@@ -1549,6 +1701,7 @@ module.exports = {
     handleTrialSubmission,
     handleTrialReviewReaction,
     handleTrialMemberUpdate,
+    reconcileGraduatedMembers,
     publishTrialPanel,
 
 };
