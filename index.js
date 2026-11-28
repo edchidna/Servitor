@@ -826,22 +826,25 @@ client.once(Events.ClientReady, async (readyClient) => {
         `[Iron Wolves] Existing member initialization completed in ${guild.name}.`
       );
 
-      // Grant both graduation roles to members who completed all three Trials
-      // before this update, and repair any incomplete graduation role changes.
-      try {
-        await trial.reconcileGraduatedMembers(guild);
-      } catch (error) {
-        console.error(
-          `[Trial Graduation] Existing graduate role reconciliation failed in ${guild.name}:`,
-          error
-        );
-      }
     }
   } catch (error) {
     console.error(
       '[Iron Wolves] Existing member initialization failed:',
       error
     );
+  }
+
+  // Reconcile Trial graduation roles independently of tenure initialization.
+  // This also grants both roles to members who graduated before this update.
+  for (const guild of readyClient.guilds.cache.values()) {
+    try {
+      await trial.reconcileGraduatedMembers(guild);
+    } catch (error) {
+      console.error(
+        `[Trial Graduation] Existing graduate role reconciliation failed in ${guild.name}:`,
+        error
+      );
+    }
   }
 
   try {
