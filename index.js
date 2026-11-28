@@ -713,7 +713,7 @@ const ordeals = [
     name: 'The Siege of Fenris',
     description: 'Complete The Siege of Fenris challenge.',
     gameMode: 'Siege',
-    difficulty: 'Hard',
+    difficulty: 'Absolute',
     rewardRoleId: process.env.SIEGE_OF_FENRIS_ROLE_ID
   },
   {
@@ -721,7 +721,7 @@ const ordeals = [
     name: 'The Hunt for The Wulfen',
     description: 'Complete The Hunt for The Wulfen challenge.',
     gameMode: 'Stratagems',
-    difficulty: 'Hard',
+    difficulty: 'Absolute',
     rewardRoleId: process.env.HUNT_FOR_THE_WULFEN_ROLE_ID
   },
   {
@@ -729,7 +729,7 @@ const ordeals = [
     name: 'The Shadow Wolf',
     description: 'Complete The Shadow Wolf challenge.',
     gameMode: 'Stratagems',
-    difficulty: 'Hard',
+    difficulty: 'Absolute',
     rewardRoleId: process.env.SHADOW_WOLF_ROLE_ID
   },
   {
@@ -737,7 +737,7 @@ const ordeals = [
     name: 'The Battle of Maelstrom’s Maw',
     description: 'Complete The Battle of Maelstrom’s Maw challenge.',
     gameMode: 'Stratagems',
-    difficulty: 'Hard',
+    difficulty: 'Absolute',
     rewardRoleId: process.env.MAELSTROM_SURVIVOR_ROLE_ID
   }
 ];
@@ -825,6 +825,17 @@ client.once(Events.ClientReady, async (readyClient) => {
       console.log(
         `[Iron Wolves] Existing member initialization completed in ${guild.name}.`
       );
+
+      // Grant both graduation roles to members who completed all three Trials
+      // before this update, and repair any incomplete graduation role changes.
+      try {
+        await trial.reconcileGraduatedMembers(guild);
+      } catch (error) {
+        console.error(
+          `[Trial Graduation] Existing graduate role reconciliation failed in ${guild.name}:`,
+          error
+        );
+      }
     }
   } catch (error) {
     console.error(
@@ -1080,13 +1091,13 @@ function scheduleOperationsWorkflowExpiration(userId, workflow) {
 }
 
 const stratagemDifficultyPoints = {
-  'Normal': 5,
-  'Hard': 6
+  'Substantial': 5,
+  'Absolute': 6
 };
 
 const siegeDifficultyPoints = {
-  'Normal': 3,
-  'Hard': 5
+  'Substantial': 3,
+  'Absolute': 5
 };
 
 const pvpGameModes = [
@@ -6659,7 +6670,8 @@ async function startServitor() {
     'NCO_ROLE_ID',
     'MODERATOR_ROLE_ID',
     'UNPROVEN_ROLE_ID',
-    'IRON_WOLVES_ROLE_ID'
+    'IRON_WOLVES_ROLE_ID',
+    'PACK_BROTHER_ROLE_ID'
   ];
   const missingRuntimeVariables = requiredRuntimeVariables.filter(
     variable => !process.env[variable] || !process.env[variable].trim()
